@@ -126,17 +126,19 @@
       '<li><b>Permissions</b> → <i>Repository permissions</i> → <b>Contents: Read and write</b> (không cần quyền nào khác).</li>' +
       '<li>Bấm <b>Generate token</b>, sao chép chuỗi bắt đầu bằng <code>github_pat_</code> và dán vào ô bên dưới. Trên mỗi thiết bị khác, dán lại cùng token này.</li></ol>' +
       '<p class="muted" style="font-size:13px">Token chỉ lưu trong trình duyệt của thiết bị này và chỉ truy cập được repo dữ liệu, không đụng tới mã nguồn. Dùng máy chung thì nhớ bấm “Ngắt kết nối” sau khi học.</p></details>';
-    const form = '<div class="tool"><div class="frm"><div class="fld"><label for="sy-r">Repo dữ liệu</label><input id="sy-r" value="' + esc(c ? c.repo : 'iamtriet/ict-data') + '" autocomplete="off" spellcheck="false"></div>' +
-      '<div class="fld"><label for="sy-t">Token</label><input id="sy-t" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false"></div></div>' +
-      '<div class="btns" style="margin-top:12px"><button type="button" class="btn pri" id="sy-go">Kết nối &amp; đồng bộ</button></div></div>';
+    const form = '<form class="tool" id="sy-form" method="post" action="#sync" autocomplete="on"><div class="frm"><div class="fld"><label for="sy-r">Repo dữ liệu</label><input id="sy-r" name="repo" value="' + esc(c ? c.repo : 'iamtriet/ict-data') + '" autocomplete="off" spellcheck="false"></div>' +
+      '<div class="fld"><label for="sy-u">Tên lưu trong trình quản lý mật khẩu</label><input id="sy-u" name="username" value="ict-sync" autocomplete="username" spellcheck="false"></div>' +
+      '<div class="fld"><label for="sy-t">Token</label><input id="sy-t" name="password" type="password" placeholder="github_pat_…" autocomplete="current-password" spellcheck="false"></div></div>' +
+      '<div class="btns" style="margin-top:12px"><button type="submit" class="btn pri" id="sy-go">Kết nối &amp; đồng bộ</button></div><p class="muted" style="font-size:13px;margin:8px 0 0">Khi trình duyệt hỏi, hãy chọn <b>Lưu mật khẩu</b>: lần sau trên thiết bị khác (cùng tài khoản trình duyệt) chỉ cần bấm tự điền.</p></form>';
     const panel = '<div class="tool"><p>Trạng thái: <b id="sy-st"></b></p><p class="muted" style="font-size:13px">Repo: <code>' + esc(c ? c.repo : '') + '</code>' + (last ? ' · Lần cuối: ' + new Date(last).toLocaleString('vi-VN') : '') + '</p>' +
       '<div class="btns"><button type="button" class="btn pri" id="sy-now">Đồng bộ ngay</button><button type="button" class="btn" id="sy-push">Ghi đè đám mây bằng máy này</button><button type="button" class="btn" id="sy-pull">Lấy từ đám mây (ghi đè máy này)</button><button type="button" class="btn" id="sy-off">Ngắt kết nối</button></div>' +
       '<p class="muted" style="font-size:13px;margin-top:10px">Tự đồng bộ khi mở app, khi quay lại tab và vài giây sau mỗi thay đổi. Bài đã học được gộp từ mọi máy; điểm quiz lấy điểm cao nhất; nhật ký, kế hoạch và checklist lấy bản sửa mới nhất. Muốn bỏ đánh dấu một bài trên mọi máy, hãy bỏ ở một máy rồi bấm “Ghi đè đám mây bằng máy này”.</p></div>';
     view.innerHTML = '<div class="page"><div class="crumb">Đồng bộ</div><h1>Đồng bộ giữa các thiết bị</h1><p class="lead">Tiến độ, quiz, nhật ký, kế hoạch và dữ liệu CSV được lưu vào một repo <b>riêng tư</b> trên GitHub của bạn, để điện thoại và máy tính dùng chung một dữ liệu.</p>' + (c ? panel : '') + (c ? '' : form) + guide + (c ? '<h3>Đổi token hoặc repo</h3>' + form : '') + '</div>';
     const st = $('#sy-st', view), show = (s) => { st.textContent = s.msg; st.className = s.st === 'ok' ? 'up' : s.st === 'err' ? 'dn' : ''; };
     if (st) { show(state); listeners.push(show); ICT.live.push(() => { listeners = listeners.filter((f) => f !== show); }); }
-    const go = $('#sy-go', view);
-    go.onclick = () => {
+    const go = $('#sy-form', view);
+    go.onsubmit = (ev) => {
+      ev.preventDefault();
       const repo = $('#sy-r', view).value.trim().replace(/^https:\/\/github\.com\//, '').replace(/\/$/, ''), tok = $('#sy-t', view).value.trim() || (c && c.tok);
       if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !tok) { alert('Nhập repo dạng "tên/repo" và dán token.'); return; }
       wr(CFGK, { repo, tok, path: 'progress.json' }); ICT.sync.init(); run('merge').then(() => { if (location.hash === '#sync') ICT.syncPage(view); });
