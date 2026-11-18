@@ -1,0 +1,17 @@
+{
+  "name": "Kênh Học ICT — XAUUSD",
+  "short_name": "Học ICT",
+  "description": "Giáo trình ICT Trading Concepts tiếng Việt: biểu đồ tương tác, replay, công cụ, tin tức vàng.",
+  "lang": "vi",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c1016",
+  "theme_color": "#0c1016",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
