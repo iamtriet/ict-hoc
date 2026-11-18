@@ -4,7 +4,7 @@
   const ICT = window.ICT, esc = ICT.esc, $ = (s, r) => (r || document).querySelector(s);
   const store = (ICT.store = {
     get(k, d) { try { const v = localStorage.getItem('ict.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem('ict.' + k, JSON.stringify(v)); } catch (e) { /* bỏ qua */ } },
+    set(k, v) { try { localStorage.setItem('ict.' + k, JSON.stringify(v)); } catch (e) { /* bỏ qua */ } if (ICT.sync) ICT.sync.touch(k); },
   });
   ICT.live = []; // bộ dọn dẹp khi đổi trang
   const view = $('#view'), side = $('#side');
@@ -34,7 +34,7 @@
       const ls = L.filter((l) => l.m === m.n), n = ls.filter((l) => d[l.id]).length;
       h += '<details data-m="' + m.n + '"><summary><span>' + esc(m.title) + '</span><span class="mp">' + n + '/' + ls.length + '</span></summary><div class="ls">' + ls.map((l) => '<a class="nv" href="#' + l.id + '" data-r="' + l.id + '"><i class="dotp ' + (d[l.id] ? 'ok' : '') + '"></i>' + esc(l.title) + '</a>').join('') + '</div></details>';
     });
-    h += '<h6>Thực hành</h6><a class="nv" href="#replay" data-r="replay">▶ Replay Lab</a><a class="nv" href="#live" data-r="live">◉ Biểu đồ XAUUSD trực tiếp</a><a class="nv" href="#news" data-r="news">✺ Tin tức &amp; lịch kinh tế</a><a class="nv" href="#tools" data-r="tools">⚒ Công cụ</a><a class="nv" href="#glossary" data-r="glossary">Aa Từ điển ICT</a><a class="nv" href="#exam" data-r="exam">✎ Thi thử tổng hợp</a><a class="nv" href="#refs" data-r="refs">↗ Tham khảo</a><a class="nv" href="#progress" data-r="progress">◔ Tiến độ</a>';
+    h += '<h6>Thực hành</h6><a class="nv" href="#replay" data-r="replay">▶ Replay Lab</a><a class="nv" href="#live" data-r="live">◉ Biểu đồ XAUUSD trực tiếp</a><a class="nv" href="#news" data-r="news">✺ Tin tức &amp; lịch kinh tế</a><a class="nv" href="#tools" data-r="tools">⚒ Công cụ</a><a class="nv" href="#glossary" data-r="glossary">Aa Từ điển ICT</a><a class="nv" href="#exam" data-r="exam">✎ Thi thử tổng hợp</a><a class="nv" href="#refs" data-r="refs">↗ Tham khảo</a><a class="nv" href="#progress" data-r="progress">◔ Tiến độ</a><a class="nv" href="#sync" data-r="sync">☁ Đồng bộ thiết bị</a>';
     side.innerHTML = h;
   }
   function markSide(r) {
@@ -58,6 +58,7 @@
     else if (r === 'refs') ICT.refsPage(view);
     else if (r === 'exam') exam();
     else if (r === 'progress') progress();
+    else if (r === 'sync') ICT.syncPage(view);
     else { ok = false; home(); }
     markSide(ok ? r : 'home'); window.scrollTo(0, 0); document.title = 'Kênh Học ICT';
     view.insertAdjacentHTML('beforeend', '<div class="foot">Nội dung chỉ nhằm mục đích giáo dục, không phải lời khuyên đầu tư. Toàn bộ biểu đồ là <b>dữ liệu mô phỏng</b> do chương trình tạo ra để minh họa khái niệm, không phải giá thị trường thật. Giao dịch có rủi ro mất vốn. ICT (Inner Circle Trader) là khái niệm của Michael J. Huddleston; kênh học này là tài liệu độc lập, không liên kết hay được xác nhận bởi ông.</div>');
@@ -168,7 +169,7 @@
   /* ---- Tiến độ ---- */
   function progress() {
     const d = done(), q = qbest(), n = L.filter((l) => d[l.id]).length, ex = store.get('exam', []), jr = store.get('journal', []);
-    view.innerHTML = '<div class="page"><div class="crumb">Tiến độ</div><h1>Tiến độ học của bạn</h1><p class="lead">Dữ liệu được lưu trong trình duyệt này (localStorage), không gửi đi đâu cả.</p><div class="stats"><div class="stat"><b>' + n + '/' + L.length + '</b><span>bài đã học</span></div><div class="stat"><b>' + Object.keys(q).length + '</b><span>bài đã làm quiz</span></div><div class="stat"><b>' + (ex.length ? ex[ex.length - 1].ok + '/' + ex[ex.length - 1].t : '—') + '</b><span>đề thi gần nhất</span></div><div class="stat"><b>' + jr.length + '</b><span>lệnh trong nhật ký</span></div></div><div class="bar"><i style="width:' + Math.round((n / L.length) * 100) + '%"></i></div>' +
+    view.innerHTML = '<div class="page"><div class="crumb">Tiến độ</div><h1>Tiến độ học của bạn</h1><p class="lead">Dữ liệu lưu trong trình duyệt này; muốn dùng chung giữa các thiết bị, hãy bật <a href="#sync">Đồng bộ thiết bị</a> (lưu vào repo GitHub riêng tư của bạn).</p><div class="stats"><div class="stat"><b>' + n + '/' + L.length + '</b><span>bài đã học</span></div><div class="stat"><b>' + Object.keys(q).length + '</b><span>bài đã làm quiz</span></div><div class="stat"><b>' + (ex.length ? ex[ex.length - 1].ok + '/' + ex[ex.length - 1].t : '—') + '</b><span>đề thi gần nhất</span></div><div class="stat"><b>' + jr.length + '</b><span>lệnh trong nhật ký</span></div></div><div class="bar"><i style="width:' + Math.round((n / L.length) * 100) + '%"></i></div>' +
       M.map((m) => '<h3>' + esc(m.title) + '</h3><div class="tblw"><table><tr><th>Bài</th><th>Đã học</th><th>Quiz tốt nhất</th></tr>' + L.filter((l) => l.m === m.n).map((l) => '<tr><td><a href="#' + l.id + '">' + esc(l.title) + '</a></td><td>' + (d[l.id] ? '<span class="up">✔</span>' : '—') + '</td><td>' + (q[l.id] != null ? q[l.id] + '%' : '—') + '</td></tr>').join('') + '</table></div>').join('') +
       '<h3>Đặt lại</h3><p class="muted">Xóa tiến độ học và kết quả quiz (không xóa nhật ký giao dịch).</p><button type="button" class="btn" id="rs1">Đặt lại tiến độ…</button><span id="rs2" hidden> Chắc chắn? <button type="button" class="btn sm" id="rs3">Xóa tiến độ</button></span></div>';
     $('#rs1').onclick = () => { $('#rs2').hidden = false; }; $('#rs3').onclick = () => { store.set('done', {}); store.set('qbest', {}); store.set('exam', []); buildSide(); route(); };
@@ -196,7 +197,10 @@
     document.documentElement.setAttribute('data-theme', nx); store.set('theme', nx);
   };
   const th = store.get('theme', null); if (th) document.documentElement.setAttribute('data-theme', th);
-  try { const rw = store.get('raw', null); if (rw && rw.rows) ICT.defRaw('mydata', rw.rows, { title: rw.title || 'Dữ liệu thật', sym: 'XAUUSD' }); } catch (e) { store.set('raw', null); }
-  buildSide(); window.addEventListener('hashchange', route); route();
+  const applyRaw = () => { try { const rw = store.get('raw', null); if (rw && rw.rows) ICT.defRaw('mydata', rw.rows, { title: rw.title || 'Dữ liệu thật', sym: 'XAUUSD' }); } catch (e) { store.set('raw', null); } };
+  applyRaw();
+  /* sau khi đồng bộ kéo dữ liệu mới về: làm mới thanh bên và các trang đang hiển thị dữ liệu (tránh ghi đè bằng bản cũ) */
+  ICT.afterSync = () => { applyRaw(); buildSide(); const r = (location.hash || '#home').slice(1) || 'home'; if (['home', 'progress', 'curriculum', 'tools'].indexOf(r) >= 0 || r.indexOf('t-') === 0) route(); markSide(r); };
+  buildSide(); window.addEventListener('hashchange', route); route(); if (ICT.sync) ICT.sync.init();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

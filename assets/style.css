@@ -30,6 +30,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .top .sp { flex: 1; }
 .icon-btn { background: none; border: 1px solid var(--line); border-radius: 8px; width: 36px; height: 36px; cursor: pointer; display: inline-grid; place-items: center; color: var(--fg); }
 .icon-btn:hover { background: var(--tint); }
+a.icon-btn { text-decoration: none; }
+#syncBtn[data-st="ok"] { color: var(--bull); border-color: color-mix(in srgb, var(--bull) 50%, var(--line)); } #syncBtn[data-st="err"] { color: var(--bear); border-color: var(--bear); } #syncBtn[data-st="sync"] { color: var(--accent); animation: sypulse 1s ease-in-out infinite; } #syncBtn[data-st="off"] { color: var(--faint); }
+@keyframes sypulse { 50% { opacity: .4; } } @media (prefers-reduced-motion: reduce) { #syncBtn[data-st="sync"] { animation: none; } }
 #menuBtn { display: none; }
 .search { position: relative; flex: 0 1 280px; }
 .search input { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px 7px 32px; font-size: 14px; }

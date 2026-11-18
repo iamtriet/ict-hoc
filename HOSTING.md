@@ -23,3 +23,8 @@ Mở `index.html`.
 
 ## Cập nhật
 Sau khi sửa nội dung: `python build.py` rồi tải lại thư mục lên hosting.
+
+## Đồng bộ giữa các thiết bị
+
+Tiến độ, quiz, nhật ký, kế hoạch… đồng bộ qua repo riêng tư `iamtriet/ict-data` (file `progress.json`).
+Mở tab **Đồng bộ thiết bị** (biểu tượng ☁), tạo token fine-grained chỉ có quyền *Contents: Read and write* trên repo `ict-data`, rồi dán vào trên mỗi thiết bị. Token chỉ lưu trong trình duyệt của thiết bị đó.
