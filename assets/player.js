@@ -151,9 +151,9 @@
     let s = '<rect class="d-z bear" x="30" y="20" width="250" height="125"/><rect class="d-z bull" x="30" y="145" width="250" height="125"/><line class="d-l dash" x1="30" x2="280" y1="145" y2="145"/>';
     s += T(155, 40, 'PREMIUM (đắt)', 'd-t bear b', 'middle') + T(155, 262, 'DISCOUNT (rẻ)', 'd-t bull b', 'middle') + T(155, 139, 'Equilibrium 50%', 'd-t b', 'middle');
     s += T(155, 14, 'Đỉnh range — BSL ▲', 'd-t', 'middle') + T(155, 284, 'Đáy range — SSL ▼', 'd-t', 'middle');
-    s += T(310, 52, 'Vùng bán (Premium):', 'd-t bear b') + ['Old High / EQH (thanh khoản)', 'Rejection Block giảm', 'Bearish Order Block', 'Bearish FVG / Breaker'].map((t, i) => T(310, 74 + i * 20, '• ' + t)).join('');
-    s += T(310, 178, 'Vùng mua (Discount):', 'd-t bull b') + ['Bullish FVG / Breaker', 'Bullish Order Block', 'Rejection Block tăng', 'Old Low / EQL (thanh khoản)'].map((t, i) => T(310, 200 + i * 20, '• ' + t)).join('');
-    s += T(310, 132, 'Xu hướng tăng: chỉ MUA ở discount', 'd-t mute') + T(310, 150, 'Xu hướng giảm: chỉ BÁN ở premium', 'd-t mute');
+    s += T(310, 40, 'Vùng bán (Premium):', 'd-t bear b') + ['Old High / EQH (thanh khoản)', 'Rejection Block giảm', 'Bearish Order Block', 'Bearish FVG / Breaker'].map((t, i) => T(310, 62 + i * 20, '• ' + t)).join('');
+    s += T(310, 196, 'Vùng mua (Discount):', 'd-t bull b') + ['Bullish FVG / Breaker', 'Bullish Order Block', 'Rejection Block tăng', 'Old Low / EQL (thanh khoản)'].map((t, i) => T(310, 218 + i * 20, '• ' + t)).join('');
+    s += T(310, 152, 'Xu hướng tăng: chỉ MUA ở discount', 'd-t mute') + T(310, 170, 'Xu hướng giảm: chỉ BÁN ở premium', 'd-t mute');
     return svgw('560 290', s);
   };
   D.po3 = () => {
@@ -172,13 +172,13 @@
     blocks.forEach(([a, b, t, c]) => { s += '<rect class="d-z ' + c + '" x="' + X(a) + '" y="46" width="' + (X(b) - X(a)) + '" height="46"/>' + T((X(a) + X(b)) / 2, 74, t, 'd-t b', 'middle'); });
     [[3, 4], [10, 11], [14, 15]].forEach(([a, b]) => { s += '<rect class="d-sb" x="' + X(a) + '" y="100" width="' + (X(b) - X(a)) + '" height="14"/>'; });
     s += T(X(3.5), 130, 'SB', 'd-t b', 'middle') + T(X(10.5), 130, 'SB', 'd-t b', 'middle') + T(X(14.5), 130, 'SB', 'd-t b', 'middle');
-    s += T(6, 38, 'Giờ New York', 'd-t b'); s += T(6, 168, 'Giờ VN (NY mùa đông, EST)', 'd-t'); s += T(6, 196, 'Giờ VN (NY mùa hè, EDT)', 'd-t');
+    s += T(6, 14, 'Giờ New York', 'd-t b'); s += T(6, 168, 'Giờ VN (NY mùa đông, EST)', 'd-t'); s += T(6, 196, 'Giờ VN (NY mùa hè, EDT)', 'd-t');
     for (let h = 0; h <= 24; h += 2) {
       s += '<line class="d-l" x1="' + X(h) + '" x2="' + X(h) + '" y1="40" y2="46"/>' + T(X(h), 36, String(h).padStart(2, '0'), 'd-t', 'middle');
       s += T(X(h), 182, String((h + 12) % 24).padStart(2, '0'), 'd-t mute', 'middle') + T(X(h), 210, String((h + 11) % 24).padStart(2, '0'), 'd-t mute', 'middle');
     }
-    s += T(50, 236, 'Asia 20:00–00:00 · London 02:00–05:00 · NY 07:00–10:00 · London Close 10:00–12:00 · NY PM 13:30–16:00 (giờ New York)', 'd-t mute');
-    return svgw('700 246', s);
+    s += T(50, 228, 'Asia 20:00–00:00 · London 02:00–05:00 · NY 07:00–10:00 (giờ New York)', 'd-t mute') + T(50, 246, 'London Close 10:00–12:00 · NY PM 13:30–16:00 (giờ New York)', 'd-t mute');
+    return svgw('700 256', s);
   };
   D.mmxm = () => {
     let s = '<rect class="d-z neu" x="30" y="70" width="120" height="50" opacity=".5"/>';

@@ -250,8 +250,8 @@
             const r = { x1: cx + offs[k] - w / 2, y1, x2: cx + offs[k] + w / 2, y2: y1 + h, inn: 1 };
             if (!occL.some((q) => r.x1 < q.x2 + 2 && r.x2 > q.x1 - 2 && r.y1 < q.y2 + 1 && r.y2 > q.y1 - 1)) pick = r;
           }
-          if (!pick) pick = { x1: cx - w / 2, y1, x2: cx + w / 2, y2: y1 + h, inn: 1 };
-          occL.push(pick); return pick;
+          if (pick) { occL.push(pick); return pick; }
+          q.anchor = 'start'; q.ax = b.x1 + 2; q.ay = b.y1; q.side = -1; q.maxK = 4; // vùng quá nhỏ/chật: đặt sát mép trên như cũ
         }
         if (q.kind === 'pill') {
           const dirs = q.pos === 'below' ? [1, -1] : [-1, 1];
@@ -270,7 +270,17 @@
         cands.sort((a, b) => a.c - b.c);
         const fit = (c) => { const r = { x1: clamp(c.x1, 2, Wt - 2 - w), y1: clamp(c.y1, 2, H - m.b - 2 - h) }; r.x2 = r.x1 + w; r.y2 = r.y1 + h; return r; };
         let best = null; for (let k = 0; k < cands.length; k++) { const r = fit(cands[k]); if (!hit(r)) { best = r; break; } }
-        if (!best) best = fit(cands[0]);
+        if (!best && q.kind !== 'pill') { // thử thêm các hàng xa hơn trước khi chịu đè
+          const sd = q.side || -1, step = w * 0.55 + 8, ex = [];
+          for (let si = 0; si < 2; si++) for (let k = 0; k <= 9; k++) for (let j = 3; j <= 5; j++) {
+            const s = si ? -sd : sd; let x1;
+            if (q.anchor === 'end') x1 = q.ax - w - k * step; else if (q.anchor === 'start') x1 = q.ax + k * step; else x1 = q.ax - w / 2 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * step;
+            ex.push({ x1, y1: s < 0 ? q.ay - h - 1 - j * h * 0.8 : q.ay + 1 + j * h * 0.8, c: j * 10 + k * 3 + si * 40 });
+          }
+          ex.sort((a, b) => a.c - b.c);
+          for (let k = 0; k < ex.length; k++) { const r = fit(ex[k]); if (!hit(r)) { best = r; break; } }
+        }
+        if (!best) { best = fit(cands[0]); best.ovl = 1; }
         occL.push(best); return best;
       }
 
@@ -388,6 +398,7 @@
       // nhãn (đặt sau cùng, tự né nến và nhãn khác)
       reqs.sort((p, q) => p.pri - q.pri).forEach((q) => {
         const r = place(q);
+        if (q.tc === 'sw' && r.ovl) { occL.pop(); return; } // nhãn swing phụ: hết chỗ thì bỏ, không đè lên nhãn khác
         if (q.kind === 'pill') {
           const below = r.y1 > q.ay, lx = clamp(q.ax, r.x1 + 4, r.x2 - 4), ly = below ? r.y1 : r.y2;
           s += '<g class="' + q.g + '"><line class="ln" stroke-opacity=".55" x1="' + q.ax + '" y1="' + q.ay + '" x2="' + lx + '" y2="' + ly + '"/><rect class="pl" x="' + r.x1 + '" y="' + r.y1 + '" width="' + q.w + '" height="' + q.h + '" rx="3"/><text class="tx" x="' + (r.x1 + q.w / 2) + '" y="' + (r.y1 + 12) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
