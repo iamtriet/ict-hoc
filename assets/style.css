@@ -166,3 +166,13 @@ svg line.eq { fill: none; stroke: var(--mute); stroke-dasharray: 4 3; }
 
 .tvbox { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); margin: 8px 0 14px; } .tvwait, .tvfail { padding: 22px 18px; } .tvfail p { margin: 6px 0 12px; } .tradingview-widget-copyright { font-size: 12px; padding: 4px 10px 8px; color: var(--faint); }
 .rawbox { border: 1px dashed var(--line); border-radius: 10px; padding: 12px 14px; margin: 18px 0; } .rawbox summary { cursor: pointer; font-weight: 650; } .rawbox textarea { width: 100%; min-height: 90px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: 12px var(--mono); }
+
+/* ---- chú giải viết tắt tại chỗ ---- */
+abbr.ab { text-decoration: none; border-bottom: 1px dotted var(--faint); cursor: help; }
+abbr.ab:hover, abbr.ab:focus-visible { border-bottom-color: var(--accent); color: var(--fg); }
+.ab-x { color: var(--mute); font-size: .86em; font-weight: 400; font-style: normal; }
+#abpop { position: fixed; z-index: 60; max-width: min(320px, calc(100vw - 16px)); background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 13px; font-size: 13.5px; line-height: 1.55; box-shadow: 0 8px 28px rgba(0,0,0,.35); }
+#abpop b { font-family: var(--disp); font-size: 15px; color: var(--accent); } #abpop i { font-style: normal; color: var(--mute); }
+#abpop p { margin: 4px 0 0; } #abpop .ab-d { color: var(--mute); font-size: 13px; } #abpop a { display: inline-block; margin-top: 6px; font-size: 12.5px; font-weight: 600; }
+#unlockBar { background: var(--tint); border-bottom: 1px solid var(--line); padding: 7px 16px; font-size: 13.5px; text-align: center; color: var(--mute); }
+#unlockBar button { background: none; border: 0; color: var(--faint); cursor: pointer; margin-left: 8px; font-size: 14px; }

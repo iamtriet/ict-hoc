@@ -94,6 +94,7 @@
     ICT.mountBlocks($('.lesson', view)).forEach((p) => ICT.live.push(() => p.destroy()));
     if (l.quiz && l.quiz.length) ICT.renderQuiz($('#qz'), l.quiz, { onDone(ok, t) { const q = qbest(); q[l.id] = Math.max(q[l.id] || 0, Math.round((ok / t) * 100)); store.set('qbest', q); } });
     $('#doneBtn').onclick = () => { const x = done(); if (x[l.id]) delete x[l.id]; else x[l.id] = 1; store.set('done', x); buildSide(); route(); };
+    if (ICT.annotate) ICT.annotate($('.page', view));
     document.title = l.title + ' — Kênh Học ICT';
   }
 
@@ -163,6 +164,7 @@
     const pick = bank.slice().sort(() => Math.random() - 0.5).slice(0, 20);
     view.innerHTML = '<div class="page"><div class="crumb">Luyện thi</div><h1>Thi thử tổng hợp</h1><p class="lead">20 câu ngẫu nhiên từ ' + bank.length + ' câu hỏi của toàn bộ giáo trình. Mục tiêu: ≥ 70%.</p><div class="quiz" style="margin-top:10px"><div id="ex"></div></div><div class="btns" style="margin-top:18px"><button type="button" class="btn pri" id="exAgain">Làm đề khác</button></div></div>';
     ICT.renderQuiz($('#ex'), pick, { onDone(ok, t) { const h = store.get('exam', []); h.push({ ok, t, ts: Date.now() }); store.set('exam', h.slice(-20)); } });
+    if (ICT.annotate) ICT.annotate($('.page', view));
     $('#exAgain').onclick = () => route();
   }
 

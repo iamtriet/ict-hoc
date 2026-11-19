@@ -28,3 +28,8 @@ Sau khi sửa nội dung: `python build.py` rồi tải lại thư mục lên ho
 
 Tiến độ, quiz, nhật ký, kế hoạch… đồng bộ qua repo riêng tư `iamtriet/ict-data` (file `progress.json`).
 Mở tab **Đồng bộ thiết bị** (biểu tượng ☁), tạo token fine-grained chỉ có quyền *Contents: Read and write* trên repo `ict-data`, rồi dán vào trên mỗi thiết bị. Token chỉ lưu trong trình duyệt của thiết bị đó.
+
+### Mở khóa nhanh (không phải tạo token trên từng máy)
+GitHub Pages không khóa trang theo tài khoản GitHub (trừ gói Enterprise): trang web luôn mở được công khai, chỉ **dữ liệu** trong repo `ict-data` là riêng tư.
+Để thiết bị mới không phải tạo token: trong tab *Đồng bộ thiết bị* (đã kết nối) mở **Mở khóa nhanh cho thiết bị khác** → *Tạo mã mở khóa* → lưu mật khẩu vào trình quản lý mật khẩu → đưa nội dung hiện ra vào `assets/unlock.json` rồi đẩy lên repo `ict-hoc`.
+Token được mã hóa AES-256-GCM (khóa PBKDF2-SHA256, 600.000 vòng) bằng mật khẩu ngẫu nhiên 24 ký tự; thiết bị mới chỉ cần nhập mật khẩu đó. Đổi token thì tạo lại mã và thay file.

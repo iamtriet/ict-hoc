@@ -1,6 +1,6 @@
 # Kênh Học ICT
 
-Website học ICT Trading Concepts (tiếng Việt, ví dụ trên vàng XAUUSD): giáo trình 12 module / 59 bài, biểu đồ tương tác, Replay Lab (có hướng dẫn và tự thực hành), 10 công cụ, từ điển 112 thuật ngữ, thi thử.
+Website học ICT Trading Concepts (tiếng Việt, ví dụ trên vàng XAUUSD): giáo trình 13 module / 68 bài, biểu đồ tương tác, Replay Lab (có hướng dẫn và tự thực hành), 10 công cụ, từ điển 112 thuật ngữ, thi thử.
 
 ## Học trên mọi thiết bị
 Xem [HOSTING.md](HOSTING.md): cài như app (PWA) khi đưa lên hosting miễn phí, hoặc dùng file đơn `dist/ICT-offline.html`.
@@ -14,10 +14,10 @@ Mở `index.html` bằng trình duyệt (không cần cài gì). Dữ liệu cá
 - `assets/engine.js` — tạo kịch bản giá mô phỏng, bộ dò swing/BOS/MSS/FVG/OB/thanh khoản, biểu đồ SVG.
 - `assets/player.js` — Replay, chế độ thực hành, sơ đồ minh họa.
 - `assets/scenarios.js` — 26 kịch bản giá mô phỏng + chú thích + bước diễn giải.
-- `assets/lessons-a..f.js` — nội dung bài học và quiz.
+- `assets/lessons-a..g.js` — nội dung bài học và quiz.
 - `assets/news.js` — tab Tin tức (widget TradingView), biểu đồ XAUUSD trực tiếp, trang Tham khảo.
 - `manifest.webmanifest`, `sw.js`, `icons/` — cài như app và học offline.
-- `assets/glossary.js`, `assets/tools.js`, `assets/app.js`, `assets/style.css`.
+- `assets/glossary.js`, `assets/abbr.js` (chú giải viết tắt tại chỗ), `assets/tools.js`, `assets/app.js`, `assets/style.css`.
 
 ## Thêm nội dung
 - Bài học mới: thêm object vào `ICT.addLessons([...])` ở một file `lessons-*.js` (xem các bài hiện có). Nhúng biểu đồ bằng `<ict-chart s="idKịchBản" l="ann" a="ann,fvg,struct" replay>`.

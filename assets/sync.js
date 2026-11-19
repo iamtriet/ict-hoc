@@ -104,17 +104,116 @@
 
   function schedule(ms) { if (!cfg()) return; clearTimeout(timer); timer = setTimeout(() => run('merge'), ms); }
 
+
+  /* ---- Mã mở khóa: token được mã hóa bằng một mật khẩu mạnh rồi đặt công khai ở assets/unlock.json.
+     Thiết bị mới chỉ nhập mật khẩu (trình quản lý mật khẩu tự điền), không cần tạo token lại. ---- */
+  const VAULT = 'assets/unlock.json', ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', ITER = 600000;
+  const normPw = (x) => String(x || '').replace(/[\s-]/g, '').toUpperCase();
+  const u8 = (x) => new TextEncoder().encode(x);
+  const b64 = (a) => { let x = ''; for (let i = 0; i < a.length; i++) x += String.fromCharCode(a[i]); return btoa(x); };
+  const unb64 = (x) => Uint8Array.from(atob(x), (c) => c.charCodeAt(0));
+  const cryptoOk = () => !!(window.crypto && window.crypto.subtle);
+  async function vKey(pw, salt, it) {
+    const km = await crypto.subtle.importKey('raw', u8(normPw(pw)), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: it, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+  async function vSeal(pw, obj) {
+    const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)), k = await vKey(pw, salt, ITER);
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, u8(JSON.stringify(obj)));
+    return { v: 1, kdf: 'PBKDF2-SHA256', it: ITER, salt: b64(salt), iv: b64(iv), ct: b64(new Uint8Array(ct)) };
+  }
+  async function vOpen(pw, v) {
+    const k = await vKey(pw, unb64(v.salt), v.it || ITER);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(v.iv) }, k, unb64(v.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+  function genPw() { const r = crypto.getRandomValues(new Uint8Array(24)); let x = ''; for (let i = 0; i < 24; i++) { x += ALPHA[r[i] & 31]; if (i % 4 === 3 && i < 23) x += '-'; } return x; }
+  let vaultP = null;
+  function loadVault(force) {
+    if (vaultP && !force) return vaultP;
+    vaultP = fetch(VAULT, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((j) => (j && j.ct && j.salt && j.iv ? j : null)).catch(() => null);
+    return vaultP;
+  }
+  /* thanh nhắc trên cùng khi trang có mã mở khóa mà thiết bị này chưa kết nối */
+  function bar() {
+    const ex = document.getElementById('unlockBar');
+    if (cfg()) { if (ex) ex.remove(); return; }
+    if (ex) return; try { if (sessionStorage.getItem('ict.unlockbar')) return; } catch (e) { /* bỏ qua */ }
+    loadVault().then((v) => {
+      if (!v || cfg() || document.getElementById('unlockBar')) return;
+      const d = document.createElement('div'); d.id = 'unlockBar';
+      d.innerHTML = '☁ Đồng bộ tiến độ giữa các thiết bị: <a href="#sync">nhập mật khẩu mở khóa</a> <button type="button" aria-label="Đóng">✕</button>';
+      document.body.insertBefore(d, document.querySelector('.layout'));
+      d.querySelector('button').onclick = () => { try { sessionStorage.setItem('ict.unlockbar', '1'); } catch (e) { /* bỏ qua */ } d.remove(); };
+    });
+  }
+
   ICT.sync = {
     touch(k) { if (KEYS.indexOf(k) < 0) return; const ts = rd(TSK, {}); ts[k] = Date.now(); wr(TSK, ts); schedule(4000); },
     run, state: () => state,
     init() {
-      if (!cfg()) return;
+      bar(); if (!cfg()) return;
       setState('idle', 'Chưa đồng bộ'); setTimeout(() => run('merge'), 800);
       if (ICT.sync._on) return; ICT.sync._on = true;
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - rd(LASTK, 0) > 60000) run('merge'); });
       window.addEventListener('online', () => run('merge'));
     },
   };
+
+
+  /* ---- giao diện mã mở khóa ---- */
+  function useHtml() {
+    return '<form class="tool" id="sy-unlock" method="post" action="#sync" autocomplete="on"><h3 style="margin-top:0">Mở khóa nhanh</h3>' +
+      '<p class="muted" style="font-size:13.5px">Trang này đã có mã mở khóa đồng bộ. Nhập mật khẩu mở khóa (đã lưu trong trình quản lý mật khẩu của bạn) để kết nối, không cần tạo token.</p>' +
+      '<div class="frm"><div class="fld"><label for="sy-un">Tên lưu</label><input id="sy-un" name="username" value="ict-unlock" autocomplete="username" spellcheck="false"></div>' +
+      '<div class="fld"><label for="sy-up">Mật khẩu mở khóa</label><input id="sy-up" name="password" type="password" autocomplete="current-password" spellcheck="false"></div></div>' +
+      '<div class="btns" style="margin-top:12px"><button type="submit" class="btn pri" id="sy-ugo">Mở khóa &amp; đồng bộ</button></div><p id="sy-ue" class="dn" style="font-size:13px;margin:8px 0 0"></p></form>';
+  }
+  function wireUse(slot, v) {
+    const f = $('#sy-unlock', slot), e = $('#sy-ue', slot);
+    f.onsubmit = async (ev) => {
+      ev.preventDefault();
+      if (!cryptoOk()) { e.textContent = 'Trình duyệt này không hỗ trợ mã hóa (cần mở trang qua https).'; return; }
+      const pw = $('#sy-up', slot).value; if (!pw) { e.textContent = 'Hãy nhập mật khẩu mở khóa.'; return; }
+      const btn = $('#sy-ugo', slot); btn.disabled = true; e.className = 'muted'; e.textContent = 'Đang mở khóa…';
+      try {
+        const o = await vOpen(pw, v);
+        if (!o || !o.repo || !o.tok) throw new Error('bad');
+        wr(CFGK, { repo: o.repo, tok: o.tok, path: o.path || 'progress.json' });
+        ICT.sync.init(); await run('merge'); if (location.hash === '#sync') ICT.syncPage($('#view'));
+      } catch (x) { btn.disabled = false; e.className = 'dn'; e.textContent = 'Sai mật khẩu, hoặc mã mở khóa trên trang đã được đổi. Thử lại hoặc tạo token thủ công bên dưới.'; }
+    };
+  }
+  function makeHtml(v) {
+    return '<details class="tool"><summary><b>Mở khóa nhanh cho thiết bị khác</b>' + (v ? ' <span class="tagc g">đã có mã trên trang</span>' : '') + '</summary>' +
+      '<p class="muted" style="font-size:13.5px">Trang web này là <b>công khai</b> (GitHub Pages không khóa theo tài khoản GitHub), còn dữ liệu học thì nằm trong repo riêng tư. ' +
+      'Mã mở khóa là token của bạn đã được <b>mã hóa AES-256 bằng một mật khẩu mạnh</b>, đặt ở <code>assets/unlock.json</code>. Thiết bị mới chỉ cần nhập mật khẩu (trình quản lý mật khẩu tự điền) thay vì tạo token.</p>' +
+      '<form id="sy-vf" method="post" action="#sync" autocomplete="on"><div class="frm"><div class="fld"><label for="sy-vn">Tên lưu</label><input id="sy-vn" name="username" value="ict-unlock" autocomplete="username" spellcheck="false"></div>' +
+      '<div class="fld"><label for="sy-vp">Mật khẩu mở khóa (đã tạo ngẫu nhiên, rất mạnh)</label><input id="sy-vp" name="password" type="password" autocomplete="new-password" spellcheck="false"></div></div>' +
+      '<div class="btns" style="margin-top:12px"><button type="button" class="btn" id="sy-vshow">Hiện mật khẩu</button><button type="submit" class="btn pri">Tạo mã mở khóa</button></div></form>' +
+      '<p class="muted" style="font-size:13px;margin:8px 0 0">Khi trình duyệt hỏi, hãy chọn <b>Lưu mật khẩu</b>. Mật khẩu này không được gửi đi đâu; mất nó thì chỉ cần tạo lại mã. Nếu bạn tự đổi mật khẩu, hãy dùng ít nhất 16 ký tự ngẫu nhiên.</p><div id="sy-vout"></div></details>';
+  }
+  function wireMake(slot) {
+    const pw = $('#sy-vp', slot); if (!cryptoOk()) { $('#sy-vout', slot).innerHTML = '<p class="dn">Trình duyệt này không hỗ trợ mã hóa (cần mở trang qua https).</p>'; return; }
+    pw.value = genPw();
+    $('#sy-vshow', slot).onclick = (ev) => { pw.type = pw.type === 'password' ? 'text' : 'password'; ev.target.textContent = pw.type === 'password' ? 'Hiện mật khẩu' : 'Ẩn mật khẩu'; };
+    $('#sy-vf', slot).onsubmit = async (ev) => {
+      ev.preventDefault();
+      const c = cfg(), out = $('#sy-vout', slot);
+      if (!c) { out.innerHTML = '<p class="dn">Hãy kết nối token trước.</p>'; return; }
+      if (normPw(pw.value).length < 16) { out.innerHTML = '<p class="dn">Mật khẩu quá ngắn (cần ít nhất 16 ký tự). Xóa ô này và tải lại trang để có mật khẩu ngẫu nhiên.</p>'; return; }
+      out.innerHTML = '<p class="muted">Đang mã hóa…</p>';
+      try {
+        const blob = JSON.stringify(await vSeal(pw.value, { repo: c.repo, tok: c.tok, path: c.path || 'progress.json' }), null, 2);
+        out.innerHTML = '<p><b>Mã mở khóa đã tạo.</b> Bước cuối: đưa nội dung dưới đây vào file <code>assets/unlock.json</code> của repo <code>ict-hoc</code> (hoặc dán cho Claude để làm hộ). Nội dung đã mã hóa nên không lộ token.</p>' +
+          '<textarea id="sy-vt" readonly rows="8" style="width:100%;font:12px var(--mono);background:var(--tint);border:1px solid var(--line);border-radius:8px;padding:8px;color:var(--fg)"></textarea>' +
+          '<div class="btns" style="margin-top:8px"><button type="button" class="btn" id="sy-vc">Sao chép</button><button type="button" class="btn" id="sy-vd">Tải về unlock.json</button></div>';
+        const ta = $('#sy-vt', slot); ta.value = blob;
+        $('#sy-vc', slot).onclick = () => { ta.select(); try { document.execCommand('copy'); } catch (e) { /* bỏ qua */ } if (navigator.clipboard) navigator.clipboard.writeText(blob).catch(() => {}); $('#sy-vc', slot).textContent = 'Đã sao chép'; };
+        $('#sy-vd', slot).onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([blob], { type: 'application/json' })); a.download = 'unlock.json'; document.body.appendChild(a); a.click(); a.remove(); };
+      } catch (x) { out.innerHTML = '<p class="dn">Không mã hóa được: ' + esc(x && x.message || '') + '</p>'; }
+    };
+  }
 
   /* ---- Trang "Đồng bộ" ---- */
   ICT.syncPage = function (view) {
@@ -133,9 +232,16 @@
     const panel = '<div class="tool"><p>Trạng thái: <b id="sy-st"></b></p><p class="muted" style="font-size:13px">Repo: <code>' + esc(c ? c.repo : '') + '</code>' + (last ? ' · Lần cuối: ' + new Date(last).toLocaleString('vi-VN') : '') + '</p>' +
       '<div class="btns"><button type="button" class="btn pri" id="sy-now">Đồng bộ ngay</button><button type="button" class="btn" id="sy-push">Ghi đè đám mây bằng máy này</button><button type="button" class="btn" id="sy-pull">Lấy từ đám mây (ghi đè máy này)</button><button type="button" class="btn" id="sy-off">Ngắt kết nối</button></div>' +
       '<p class="muted" style="font-size:13px;margin-top:10px">Tự đồng bộ khi mở app, khi quay lại tab và vài giây sau mỗi thay đổi. Bài đã học được gộp từ mọi máy; điểm quiz lấy điểm cao nhất; nhật ký, kế hoạch và checklist lấy bản sửa mới nhất. Muốn bỏ đánh dấu một bài trên mọi máy, hãy bỏ ở một máy rồi bấm “Ghi đè đám mây bằng máy này”.</p></div>';
-    view.innerHTML = '<div class="page"><div class="crumb">Đồng bộ</div><h1>Đồng bộ giữa các thiết bị</h1><p class="lead">Tiến độ, quiz, nhật ký, kế hoạch và dữ liệu CSV được lưu vào một repo <b>riêng tư</b> trên GitHub của bạn, để điện thoại và máy tính dùng chung một dữ liệu.</p>' + (c ? panel : '') + (c ? '' : form) + guide + (c ? '<h3>Đổi token hoặc repo</h3>' + form : '') + '</div>';
+    view.innerHTML = '<div class="page"><div class="crumb">Đồng bộ</div><h1>Đồng bộ giữa các thiết bị</h1><p class="lead">Tiến độ, quiz, nhật ký, kế hoạch và dữ liệu CSV được lưu vào một repo <b>riêng tư</b> trên GitHub của bạn, để điện thoại và máy tính dùng chung một dữ liệu.</p>' + (c ? '' : '<div id="sy-vault"></div>') + (c ? panel + '<div id="sy-vault"></div>' : '') + (c ? '' : form) + guide + (c ? '<h3>Đổi token hoặc repo</h3>' + form : '') + '</div>';
     const st = $('#sy-st', view), show = (s) => { st.textContent = s.msg; st.className = s.st === 'ok' ? 'up' : s.st === 'err' ? 'dn' : ''; };
     if (st) { show(state); listeners.push(show); ICT.live.push(() => { listeners = listeners.filter((f) => f !== show); }); }
+
+    const slot = $('#sy-vault', view);
+    if (slot) loadVault().then((v) => {
+      if (!slot.isConnected) return;
+      if (!c) { if (v) { slot.innerHTML = useHtml(); wireUse(slot, v); } return; }
+      slot.innerHTML = makeHtml(v); wireMake(slot);
+    });
     const go = $('#sy-form', view);
     go.onsubmit = (ev) => {
       ev.preventDefault();
