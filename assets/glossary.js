@@ -6,6 +6,8 @@
     ['AMD', 'Accumulation – Manipulation – Distribution', 'Thời gian', 'Ba pha của Power of 3: tích lũy, thao túng (quét thanh khoản ngược hướng), phân phối (di chuyển thật).'],
     ['Asian Range', 'Phạm vi phiên Á', 'Thời gian', 'Đỉnh–đáy giá trong phiên Á (khoảng 19:00/20:00–00:00 giờ NY). Là thanh khoản để London quét.'],
     ['Balanced Price Range', 'BPR', 'PD Array', 'Vùng giao nhau của một FVG tăng và một FVG giảm đối nghịch: giá đã "cân bằng" cả hai phía, hay có phản ứng khi quay lại.'],
+    ['CRT', 'Candle Range Theory', 'Mô hình', 'Mô hình ba nến của cộng đồng ICT: C1 là range, C2 quét một đầu của C1 và đóng cửa quay lại bên trong, C3 mở rộng về đầu còn lại. Xem bài 13.2.'],
+    ['ICT Macro', 'Macro', 'Thời gian', 'Cửa sổ khoảng 20 phút quanh mỗi giờ (ví dụ 09:50–10:10 giờ NY) nơi giá được cho là hay lấy thanh khoản hoặc lấp mất cân bằng. Là bộ lọc thời gian, không phải tín hiệu. Xem bài 13.3.'],
     ['Bar Replay', 'Replay nến', 'Khác', 'Công cụ phát lại dữ liệu lịch sử từng nến để luyện tập/backtest như thời gian thực (TradingView có sẵn).'],
     ['Bias', 'Daily/Weekly bias', 'Cấu trúc', 'Nhận định hướng ưu tiên (tăng/giảm) cho một khung thời gian dựa trên cấu trúc, thanh khoản và PD Array HTF.'],
     ['BISI', 'Buyside Imbalance, Sellside Inefficiency', 'PD Array', 'Tên ICT cho FVG tăng: có mất cân bằng bên mua, kém hiệu quả bên bán.'],

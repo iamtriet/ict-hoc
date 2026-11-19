@@ -5,6 +5,7 @@
   /* [viết tắt, tên đầy đủ, giải thích ngắn tiếng Việt] */
   const T = [
     ['ICT', 'Inner Circle Trader', 'tên trường phái do Michael Huddleston (ICT) phổ biến'],
+    ['CRT', 'Candle Range Theory', 'mô hình ba nến: nến 2 quét một đầu của nến 1 rồi đóng cửa quay lại, nến 3 mở rộng về đầu kia'],
     ['SMC', 'Smart Money Concepts', 'cách gọi chung các khái niệm dòng tiền lớn, phát triển từ ICT'],
     ['FVG', 'Fair Value Gap', 'khoảng trống giá trị hợp lý: vùng 3 nến mà giá đi quá nhanh, chưa được lấp'],
     ['IFVG', 'Inversion Fair Value Gap', 'FVG bị phá xuyên nên đổi vai trò (hỗ trợ ↔ kháng cự)'],

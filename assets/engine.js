@@ -198,16 +198,25 @@
   const nice = (span, cnt) => { const raw = span / cnt, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; };
   const CW = { tx: 6.1, 'tx sm': 5.5, 'tx b': 6.8, sw: 5.6 };
 
-  ICT.Chart = function (host, S, o0) {
+  ICT.Chart = function (host, S0, o0) {
     const o = Object.assign({ layers: [], avail: null, h: 0, range: null, win: 0, slotMin: 5, pos: null, trades: [], hideAnn: false, pad: null }, o0 || {});
-    const L = new Set(o.layers); let v = o.v == null ? S.n : o.v;
+    let S = S0; const L = new Set(o.layers); let v = o.v == null ? S0.n : o.v;
+    const FR = o.frames === false ? [] : (ICT.framesFor ? ICT.framesFor(S0) : []); let F = o.frame || S0.tf;
     const avail = o.avail || [];
     host.classList.add('chart');
-    host.innerHTML = '<div class="ch-bar"><div class="ch-info"></div><div class="ch-tg"></div></div><div class="ch-wrap"><svg class="ch-svg" role="img" aria-label="' + esc(S.title || 'Biểu đồ giá') + '"></svg></div>';
-    const info = host.querySelector('.ch-info'), tg = host.querySelector('.ch-tg'), wrap = host.querySelector('.ch-wrap'), svg = host.querySelector('svg');
+    host.innerHTML = '<div class="ch-bar"><div class="ch-info"></div><div class="ch-tf"></div><div class="ch-tg"></div></div><div class="ch-wrap"><svg class="ch-svg" role="img" aria-label="' + esc(S0.title || 'Biểu đồ giá') + '"></svg></div><p class="ch-fn" hidden></p>';
+    const info = host.querySelector('.ch-info'), tg = host.querySelector('.ch-tg'), wrap = host.querySelector('.ch-wrap'), svg = host.querySelector('svg'), tfb = host.querySelector('.ch-tf'), fnote = host.querySelector('.ch-fn');
+    const syncTf = () => { [].forEach.call(tfb.querySelectorAll('button[data-f]'), (b) => { const on = +b.dataset.f === F; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); const t = ICT.frameNote ? ICT.frameNote(S0, F) : ''; fnote.textContent = t; fnote.hidden = !t; };
+    if (FR.length) {
+      tfb.setAttribute('role', 'group'); tfb.setAttribute('aria-label', 'Khung thời gian');
+      FR.forEach((f) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tf'; b.dataset.f = f; b.textContent = ICT.tfName(f); b.title = 'Xem cùng diễn biến ở khung ' + ICT.tfName(f); b.onclick = () => { F = f; syncTf(); draw(); if (o.onFrame) o.onFrame(f); }; tfb.appendChild(b); });
+      if (o.multiBtn) { const b = document.createElement('button'); b.type = 'button'; b.className = 'tf mu'; b.textContent = '⧉ Đa khung'; b.title = 'Xếp các khung lớn phía trên để nhìn cùng lúc'; b.setAttribute('aria-pressed', 'false'); b.onclick = () => { const on = !b.classList.contains('on'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); o.multiBtn(on); }; tfb.appendChild(b); }
+      syncTf();
+    } else tfb.style.display = 'none';
+    if (o.noTg) { tg.style.display = 'none'; }
     avail.forEach((k) => {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'tg' + (L.has(k) ? ' on' : ''); b.textContent = LN[k] || k; b.setAttribute('aria-pressed', L.has(k));
-      b.onclick = () => { L.has(k) ? L.delete(k) : L.add(k); b.classList.toggle('on', L.has(k)); b.setAttribute('aria-pressed', L.has(k)); draw(); };
+      b.onclick = () => { L.has(k) ? L.delete(k) : L.add(k); b.classList.toggle('on', L.has(k)); b.setAttribute('aria-pressed', L.has(k)); draw(); if (o.onLayer) o.onLayer(k, L.has(k)); };
       tg.appendChild(b);
     });
     if (!avail.length) tg.style.display = 'none';
@@ -215,11 +224,12 @@
 
     function draw() {
       const W = Math.max(280, wrap.clientWidth || host.clientWidth || 600);
-      const m = { l: 6, r: 64, t: 24, b: 26 }, rg = o.range || [0, S.n];
+      const vb = Math.min(v, S0.n); S = ICT.frameView ? ICT.frameView(S0, F, vb) : S0; const vv = S.vF != null ? S.vF : vb;
+      const m = { l: 6, r: 64, t: 24, b: 26 }, rg = o.range ? (S.rmap ? S.rmap(o.range) : o.range) : [0, S.n];
       let x0, slots;
-      if (o.win) { x0 = Math.max(0, v - o.win); slots = o.win + 8; } else { x0 = rg[0]; slots = rg[1] - rg[0] + (o.pad == null ? 5 : o.pad); }
+      if (o.win) { x0 = Math.max(0, vv - o.win); slots = o.win + 8; } else { x0 = rg[0]; slots = rg[1] - rg[0] + (o.pad == null ? 5 : o.pad); }
       const plotW = Math.max(W - m.l - m.r, slots * o.slotMin), slot = plotW / slots, Wt = plotW + m.l + m.r;
-      const i1 = Math.min(v, o.range ? rg[1] : S.n), H = o.h || clamp(Math.round(W * 0.56), 270, 460), plotH = H - m.t - m.b, right = m.l + plotW;
+      const i1 = Math.min(vv, o.range ? rg[1] : S.n), H = o.h || clamp(Math.round(W * 0.56), 270, 460), plotH = H - m.t - m.b, right = m.l + plotW;
       let hi = -1e9, lo = 1e9;
       for (let i = x0; i < i1; i++) { hi = Math.max(hi, S.bars[i].h); lo = Math.min(lo, S.bars[i].l); }
       if (i1 <= x0) { hi = S.bars[0].h; lo = S.bars[0].l; }
@@ -244,7 +254,7 @@
         if (q.box) { // nhãn nằm giữa vùng; nếu vướng nến/nhãn khác thì trượt ngang trong vùng, gần tâm nhất
           const b = q.box, cx = (b.x1 + b.x2) / 2, y1 = (b.y1 + b.y2) / 2 - h / 2, half = Math.max(0, (b.x2 - b.x1 - w) / 2), offs = [0];
           for (let d = 4; d <= half; d += 4) offs.push(-d, d);
-          let pick = null;
+          let pick = null; if (b.x2 - b.x1 < w) offs.length = 0; // vùng hẹp hơn nhãn: không nhét vào trong
           for (let k = 0; k < offs.length; k++) { const r = { x1: cx + offs[k] - w / 2, y1, x2: cx + offs[k] + w / 2, y2: y1 + h, inn: 1 }; if (!hit(r)) { pick = r; break; } }
           for (let k = 0; !pick && k < offs.length; k++) { // hết chỗ trống: chấp nhận đè lên nến, nhưng không đè lên nhãn khác
             const r = { x1: cx + offs[k] - w / 2, y1, x2: cx + offs[k] + w / 2, y2: y1 + h, inn: 1 };
@@ -345,8 +355,8 @@
         S.ann.forEach((a) => {
           try {
             const keys = ['hline', 'zone', 'range', 'vband', 'fib'].indexOf(a.t) >= 0 ? ['at', 'x1'] : ['at', 'x1', 'x2'], xs = [];
-            keys.forEach((k) => { if (a[k] != null && a[k] !== 'end') xs.push(S.X(a[k])); });
-            if ((xs.length ? Math.max.apply(null, xs) : 0) >= v) return;
+            keys.forEach((k) => { if (a[k] != null && a[k] !== 'end') xs.push(S0.X(a[k])); });
+            if ((xs.length ? Math.max.apply(null, xs) : 0) >= vb) return;
             s += drawAnn(a);
           } catch (e) { console.warn(e.message); }
         });
@@ -359,12 +369,12 @@
           req({ text: a.text, ax: px(i), ay: y, kind: 'pill', pos, lift: a.lift, g, pri: 0 }); return '';
         }
         if (a.t === 'hline') {
-          const ia = Math.max(S.X(a.x1 == null ? 0 : a.x1), x0), ie = a.x2 == null || a.x2 === 'end' ? null : Math.min(S.X(a.x2), i1 - 1), y = py(S.Y(a.y)), xa = px(ia), xe = ie == null ? right : px(ie);
+          const ia = Math.max(S.X(a.x1 == null ? 0 : a.x1, 0), x0), ie = a.x2 == null || a.x2 === 'end' ? null : Math.min(S.X(a.x2, 2), i1 - 1), y = py(S.Y(a.y)), xa = px(ia), xe = ie == null ? right : px(ie);
           if (a.text) req({ text: a.text, ax: xe - 4, ay: y, anchor: 'end', side: a.below ? 1 : -1, tc: 'tx', g, pri: 1 });
           return '<g class="' + g + '"><line class="ln ' + (a.dash === false ? '' : 'dash') + '" x1="' + xa + '" x2="' + xe + '" y1="' + y + '" y2="' + y + '"/></g>';
         }
         if (a.t === 'zone') {
-          const ia = Math.max(S.X(a.x1), x0), ie = a.x2 == null || a.x2 === 'end' ? null : Math.min(S.X(a.x2), i1 - 1), ya = py(S.Y(a.y1)), yb = py(S.Y(a.y2)), xa = px(ia) - slot / 2, xe = ie == null ? right : px(ie) + slot / 2, y = Math.min(ya, yb), h = Math.max(2, Math.abs(ya - yb));
+          const ia = Math.max(S.X(a.x1, 0), x0), ie = a.x2 == null || a.x2 === 'end' ? null : Math.min(S.X(a.x2, 2), i1 - 1), ya = py(S.Y(a.y1)), yb = py(S.Y(a.y2)), xa = px(ia) - slot / 2, xe = ie == null ? right : px(ie) + slot / 2, y = Math.min(ya, yb), h = Math.max(2, Math.abs(ya - yb));
           if (a.text) req({ text: a.text, box: { x1: xa, x2: Math.max(xa + 2, xe), y1: y, y2: y + h }, tc: 'tx sm', g, pri: 1 });
           return '<g class="' + g + '"><rect class="fl" fill-opacity="' + (a.op || 0.2) + '" x="' + xa + '" y="' + y + '" width="' + Math.max(2, xe - xa) + '" height="' + h + '"/><rect class="ln" fill="none" stroke-opacity=".7" x="' + xa + '" y="' + y + '" width="' + Math.max(2, xe - xa) + '" height="' + h + '"/>' + (a.ce ? '<line class="ln dot" x1="' + xa + '" x2="' + xe + '" y1="' + (y + h / 2) + '" y2="' + (y + h / 2) + '"/>' : '') + '</g>';
         }
@@ -374,16 +384,16 @@
           return '<g class="' + g + '"><line class="ln ' + (a.dash ? 'dash' : '') + '" stroke-width="' + (a.w || 1.6) + '" x1="' + xa + '" y1="' + ya + '" x2="' + xb + '" y2="' + yb + '"' + (a.t === 'arrow' ? ' marker-end="url(#ah)"' : '') + '/></g>';
         }
         if (a.t === 'fib') {
-          const ia = Math.max(S.X(a.x1), x0), xa = px(ia), y0 = S.Y(a.ya), y1 = S.Y(a.yb), lv = [0, 0.5, 0.62, 0.705, 0.79, 1], P = (f) => y1 + (y0 - y1) * f;
+          const ia = Math.max(S.X(a.x1, 0), x0), xa = px(ia), y0 = S.Y(a.ya), y1 = S.Y(a.yb), lv = [0, 0.5, 0.62, 0.705, 0.79, 1], P = (f) => y1 + (y0 - y1) * f;
           let gg = '<g class="a a-info"><rect class="fl" fill-opacity=".16" x="' + xa + '" y="' + Math.min(py(P(0.62)), py(P(0.79))) + '" width="' + (right - xa) + '" height="' + Math.abs(py(P(0.62)) - py(P(0.79))) + '"/>';
           lv.forEach((f) => { const y = py(P(f)); gg += '<line class="ln ' + (f === 0.705 ? '' : 'dot') + '" x1="' + xa + '" x2="' + right + '" y1="' + y + '" y2="' + y + '"/>'; req({ text: (f * 100).toFixed(f === 0.705 ? 1 : 0) + '%' + (f === 0.62 || f === 0.79 ? ' OTE' : ''), ax: right - 3, ay: y, anchor: 'end', side: -1, tc: 'tx sm', g: 'a a-info', pri: 1, maxK: 5 }); });
           return gg + '</g>';
         }
         if (a.t === 'range') {
-          const ia = Math.max(S.X(a.x1 == null ? 0 : a.x1), x0); pdBox(px(ia) - slot / 2, S.Y(a.hi), S.Y(a.lo), 'a a-info'); return '';
+          const ia = Math.max(S.X(a.x1 == null ? 0 : a.x1, 0), x0); pdBox(px(ia) - slot / 2, S.Y(a.hi), S.Y(a.lo), 'a a-info'); return '';
         }
         if (a.t === 'vband') {
-          const ia = Math.max(S.X(a.x1), x0), ie = Math.min(S.X(a.x2), i1 - 1), xa = px(ia) - slot / 2, xe = px(ie) + slot / 2;
+          const ia = Math.max(S.X(a.x1, 0), x0), ie = Math.min(S.X(a.x2, 2), i1 - 1), xa = px(ia) - slot / 2, xe = px(ie) + slot / 2;
           if (a.text) req({ text: a.text, ax: xa + 4, ay: m.t, anchor: 'start', side: 1, tc: 'tx sm', g, pri: 1, maxK: 3 });
           return '<g class="' + g + '"><rect class="fl" fill-opacity="' + (a.op || 0.1) + '" x="' + xa + '" y="' + m.t + '" width="' + (xe - xa) + '" height="' + plotH + '"/></g>';
         }
@@ -413,12 +423,13 @@
       s += '<g class="xh" style="display:none"><line class="xl" y1="' + m.t + '" y2="' + (H - m.b) + '"/></g>';
       svg.setAttribute('width', Wt); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + Wt + ' ' + H);
       svg.innerHTML = s; geo = { x0, slot, m, i1, W: Wt };
+      if (F < S0.tf && wrap.scrollWidth > wrap.clientWidth) wrap.scrollLeft = wrap.scrollWidth;
       if (!hov) showInfo(i1 - 1);
     }
     function showInfo(i) {
-      if (i < 0 || i >= S.n) { info.textContent = ''; return; }
+      if (i < 0 || i >= S.bars.length) { info.textContent = ''; return; }
       const b = S.bars[i], d = b.c - b.o;
-      info.innerHTML = '<b>' + esc(S.sym) + '</b> ' + (S.tf >= 1440 ? 'D' : S.tf + 'm') + ' · ' + S.label(i) + ' · O ' + S.fmt(b.o) + ' H ' + S.fmt(b.h) + ' L ' + S.fmt(b.l) + ' C ' + S.fmt(b.c) + ' <span class="' + (b.c >= b.o ? 'up' : 'dn') + '">' + S.money(d) + '</span>';
+      info.innerHTML = '<b>' + esc(S.sym) + '</b> ' + (ICT.tfName ? ICT.tfName(S.tf) : S.tf + 'm') + ' · ' + S.label(i) + ' · O ' + S.fmt(b.o) + ' H ' + S.fmt(b.h) + ' L ' + S.fmt(b.l) + ' C ' + S.fmt(b.c) + ' <span class="' + (b.c >= b.o ? 'up' : 'dn') + '">' + S.money(d) + '</span>';
     }
     svg.addEventListener('pointermove', (e) => {
       if (!geo) return; const r = svg.getBoundingClientRect(), x = e.clientX - r.left, i = Math.floor((x - geo.m.l) / geo.slot) + geo.x0;
@@ -428,7 +439,7 @@
     svg.addEventListener('pointerleave', () => { hov = false; const g = svg.querySelector('.xh'); if (g) g.style.display = 'none'; showInfo(geo ? geo.i1 - 1 : 0); });
     let ro = null; if (window.ResizeObserver) { let lw = 0; ro = new ResizeObserver(() => { const w = wrap.clientWidth; if (w && Math.abs(w - lw) > 1) { lw = w; draw(); } }); ro.observe(wrap); }
     const ch = {
-      S, o, draw, layers: L,
+      S: S0, o, draw, layers: L,
       setV(n) { v = n; draw(); }, getV() { return v; },
       setLayer(k, on) { on ? L.add(k) : L.delete(k); [].forEach.call(tg.children, (b) => { if ((LN[k] || k) === b.textContent) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); } }); draw(); },
       setOpt(k, val) { o[k] = val; draw(); },

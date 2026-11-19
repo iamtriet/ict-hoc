@@ -13,7 +13,7 @@
     host.classList.add('player');
     const ctl = o.controls || o.practice;
     host.innerHTML =
-      '<div class="pl-top"><b>' + esc(S.title || S.id) + '</b><span class="pl-sub">' + esc(S.sym) + ' · ' + (S.tf >= 1440 ? 'D' : S.tf + 'm') + (S.raw ? ' · dữ liệu của bạn' : ' · dữ liệu mô phỏng') + '</span></div><div class="pl-chart"></div>' +
+      '<div class="pl-top"><b>' + esc(S.title || S.id) + '</b><span class="pl-sub">' + esc(S.sym) + ' · ' + (S.tf >= 1440 ? 'D' : S.tf + 'm') + (S.raw ? ' · dữ liệu của bạn' : ' · dữ liệu mô phỏng') + '</span></div><div class="pl-multi"></div><div class="pl-chart"></div>' +
       (ctl ? '<div class="pl-ctl"><button type="button" class="btn pri" data-a="play">▶ Phát</button><button type="button" class="btn" data-a="back" title="Lùi 1 nến" aria-label="Lùi 1 nến">‹</button><button type="button" class="btn" data-a="fwd" title="Tiến 1 nến" aria-label="Tiến 1 nến">›</button><input type="range" class="pl-sl" min="1" max="' + N + '" value="' + v + '" aria-label="Vị trí nến"><span class="pl-pos"></span><select class="pl-sp" aria-label="Tốc độ"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option><option value="16">16×</option></select>' + (steps.length && !o.practice ? '<button type="button" class="btn" data-a="next">Bước tiếp ⏭</button>' : '') + '<button type="button" class="btn" data-a="reset">⟲ Từ đầu</button></div>' : '') +
       (o.practice ? '<div class="pr"><div class="pr-row"><button type="button" class="btn buy" data-t="buy">▲ MUA</button><button type="button" class="btn sell" data-t="sell">▼ BÁN</button><button type="button" class="btn" data-t="close">Đóng lệnh</button><label>SL <input class="pr-sl" type="number" min="0.1" step="0.5" value="' + Math.max(1, Math.round(S.vol * 3 * S.pip * 2) / 2) + '"> USD</label><label>R:R <select class="pr-rr"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label></div><div class="pr-stat"></div><div class="pr-log"></div></div>' : '') +
       (hasNarr ? '<div class="pl-narr"' + (o.practice ? ' hidden' : '') + '></div>' : '') +
@@ -21,12 +21,22 @@
       (o.cap ? '<p class="cap">' + o.cap + '</p>' : '');
     const q = (s) => host.querySelector(s);
     const layers = o.practice ? o.layers.filter((k) => k !== 'ann') : o.layers;
-    const chart = ICT.Chart(q('.pl-chart'), S, { layers, avail, h: o.h, range: o.range, win: o.win, v });
+    let extras = [];
+    const canMulti = !o.practice && ICT.framesFor && ICT.framesFor(S).some((f) => f > S.tf);
+    function toggleMulti(on) {
+      const mx = q('.pl-multi'); extras.forEach((c) => c.destroy()); extras = []; mx.innerHTML = '';
+      if (!on) return;
+      ICT.framesFor(S).filter((f) => f > S.tf).sort((a, b) => b - a).forEach((f) => {
+        const d = document.createElement('div'); d.className = 'pl-x'; mx.appendChild(d);
+        extras.push(ICT.Chart(d, S, { layers: Array.from(chart.layers), avail: [], h: 240, range: o.range, v, frame: f, frames: false, noTg: true }));
+      });
+    }
+    const chart = ICT.Chart(q('.pl-chart'), S, { layers, avail, h: o.h, range: o.range, win: o.win, v, multiBtn: canMulti ? toggleMulti : null, onLayer: (k, on) => extras.forEach((c) => c.setLayer(k, on)) });
     const narrEl = q('.pl-narr'), posEl = q('.pl-pos'), slEl = q('.pl-sl'), playBtn = q('[data-a=play]');
 
     function setPlaying(p) { playing = p; if (playBtn) playBtn.textContent = p ? '⏸ Tạm dừng' : (v >= N ? '↻ Phát lại' : '▶ Phát'); if (!p && timer) { clearTimeout(timer); timer = null; } }
     function apply(fromPlay, fwd) {
-      chart.setV(v); if (posEl) posEl.textContent = v + '/' + N; if (slEl) slEl.value = v;
+      chart.setV(v); extras.forEach((c) => c.setV(v)); if (posEl) posEl.textContent = v + '/' + N; if (slEl) slEl.value = v;
       if (o.practice) { barHook(v - 1); drawTrade(); }
       const st = steps.filter((s) => s.idx === v - 1)[0];
       if (st && (fromPlay || fwd) && !o.practice) {
@@ -187,6 +197,17 @@
     s += T(90, 62, 'Original Consolidation', 'd-t b', 'middle') + T(230, 112, 'Sell program (giảm)', 'd-t bear b', 'middle') + T(340, 282, 'Smart Money Reversal', 'd-t b', 'middle') + T(520, 150, 'Buy program (tăng)', 'd-t bull b', 'middle');
     s += T(520, 168, 'rời FVG / OB để lấy BSL', 'd-t mute', 'middle') + T(640, 30, 'Target: BSL / HTF DOL', 'd-t bull', 'end');
     return svgw('680 292', s);
+  };
+  D.nwog = () => {
+    let s = '<rect class="d-z neu" x="190" y="100" width="420" height="50" opacity=".6"/><line class="d-l dash" x1="190" x2="610" y1="125" y2="125"/>';
+    s += '<line class="d-l dash" x1="228" x2="228" y1="30" y2="230"/>' + T(228, 22, 'Nghỉ cuối tuần', 'd-t mute', 'middle');
+    s += cndl(70, 130, 118, 146, 140) + cndl(105, 140, 128, 158, 152) + cndl(140, 152, 140, 165, 158) + cndl(175, 158, 145, 168, 150);
+    s += cndl(270, 100, 92, 112, 108) + cndl(305, 108, 100, 126, 122) + cndl(340, 122, 112, 138, 128) + cndl(375, 128, 120, 130, 118) + cndl(410, 118, 105, 120, 104) + cndl(445, 104, 88, 106, 90);
+    s += T(175, 196, 'Đóng cửa thứ Sáu', 'd-t b', 'middle') + T(175, 212, '(Friday close)', 'd-t mute', 'middle');
+    s += T(270, 82, 'Mở cửa Chủ nhật', 'd-t b', 'middle');
+    s += T(480, 116, 'NWOG', 'd-t warn b', 'start') + T(480, 142, 'CE 50% · mức phản ứng', 'd-t', 'start');
+    s += T(375, 176, 'Giá quay lại thử gap rồi tiếp tục lên', 'd-t bull', 'middle');
+    return svgw('640 240', s);
   };
   D.weekly = () => {
     let s = ''; const dx = 120, X = (d) => 40 + d * dx;
