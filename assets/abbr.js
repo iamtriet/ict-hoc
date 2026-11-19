@@ -1,4 +1,4 @@
-/* Chú giải viết tắt ngay tại chỗ: gạch chân chấm + bấm/rê chuột để xem; lần đầu xuất hiện trong bài có giải nghĩa ngắn kèm theo. */
+/* Chú giải viết tắt ngay tại chỗ: gạch chân chấm, bấm hoặc rê chuột để xem tên đầy đủ và giải thích. */
 (function () {
   'use strict';
   const ICT = window.ICT, esc = ICT.esc;
@@ -97,8 +97,7 @@
   const norm = (s) => String(s).toLowerCase();
 
   function annotate(root) {
-    const seen = root._abSeen || (root._abSeen = {});
-    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(n) {
         if (!n.nodeValue || !/[A-Z]{2}/.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
         for (let p = n.parentNode; p && p !== root; p = p.parentNode) {
@@ -110,7 +109,7 @@
     const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
     nodes.forEach((n) => {
       const s = n.nodeValue; RE.lastIndex = 0;
-      let m, last = 0, frag = null; const cell = n.parentNode.closest && n.parentNode.closest('td,th');
+      let m, last = 0, frag = null;
       while ((m = RE.exec(s))) {
         const k = m[2], at = m.index + m[1].length, end = at + k.length, t = map[k];
         if (!frag) frag = document.createDocumentFragment();
@@ -118,15 +117,6 @@
         const a = document.createElement('abbr'); a.className = 'ab'; a.tabIndex = 0; a.dataset.k = k; a.textContent = k; a.setAttribute('role', 'button');
         a.setAttribute('aria-label', k + ': ' + t[1]);
         frag.appendChild(a);
-        const before = s.slice(Math.max(0, at - 70), at), after = s.slice(end, end + 2);
-        const inParen = /\($/.test(s.slice(0, at)) && /^\)/.test(after);
-        const named = norm(before).indexOf(norm(t[1]).split(' ')[0]) >= 0 && norm(before).indexOf(norm(t[1]).split(' ').slice(-1)[0]) >= 0;
-        if (!seen[k] && !cell) {
-          seen[k] = 1;
-          if (!inParen && !named && k !== 'ICT') {
-            const x = document.createElement('span'); x.className = 'ab-x'; x.textContent = ' (' + t[1] + ')'; frag.appendChild(x);
-          }
-        }
         last = end;
       }
       if (frag) { frag.appendChild(document.createTextNode(s.slice(last))); n.parentNode.replaceChild(frag, n); }

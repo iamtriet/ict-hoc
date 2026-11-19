@@ -19,7 +19,7 @@ Mở `index.html` bằng trình duyệt (không cần cài gì). Dữ liệu cá
 - `assets/lessons-a..g.js` — nội dung bài học và quiz.
 - `assets/news.js` — tab Tin tức (widget TradingView), biểu đồ XAUUSD trực tiếp, trang Tham khảo.
 - `manifest.webmanifest`, `sw.js`, `icons/` — cài như app và học offline.
-- `assets/glossary.js`, `assets/abbr.js` (chú giải viết tắt tại chỗ), `assets/tools.js`, `assets/app.js`, `assets/style.css`.
+- `assets/glossary.js`, `assets/abbr.js` (chú giải viết tắt tại chỗ), `assets/news2.js` (bảng tin & tác động), `assets/tools.js`, `assets/app.js`, `assets/style.css`.
 
 ## Thêm nội dung
 - Bài học mới: thêm object vào `ICT.addLessons([...])` ở một file `lessons-*.js` (xem các bài hiện có). Nhúng biểu đồ bằng `<ict-chart s="idKịchBản" l="ann" a="ann,fvg,struct" replay>`.
