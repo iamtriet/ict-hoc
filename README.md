@@ -1,5 +1,7 @@
 # Kênh Học ICT
 
+**▶ Mở web: https://iamtriet.github.io/ict-hoc/**
+
 Website học ICT Trading Concepts (tiếng Việt, ví dụ trên vàng XAUUSD): giáo trình 13 module / 68 bài, biểu đồ tương tác, Replay Lab (có hướng dẫn và tự thực hành), 10 công cụ, từ điển 112 thuật ngữ, thi thử.
 
 ## Học trên mọi thiết bị
