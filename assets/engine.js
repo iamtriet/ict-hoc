@@ -241,6 +241,18 @@
       const req = (o2) => { o2.pri = o2.pri == null ? 1 : o2.pri; o2.w = o2.text.length * (CW[o2.tc || 'tx'] || 6.1) + (o2.kind === 'pill' ? 12 : 4); o2.h = o2.kind === 'pill' ? 17 : (o2.tc === 'tx sm' || o2.tc === 'sw' ? 12 : 14); reqs.push(o2); };
       function place(q) {
         const w = q.w, h = q.h, cands = [];
+        if (q.box) { // nhãn nằm giữa vùng; nếu vướng nến/nhãn khác thì trượt ngang trong vùng, gần tâm nhất
+          const b = q.box, cx = (b.x1 + b.x2) / 2, y1 = (b.y1 + b.y2) / 2 - h / 2, half = Math.max(0, (b.x2 - b.x1 - w) / 2), offs = [0];
+          for (let d = 4; d <= half; d += 4) offs.push(-d, d);
+          let pick = null;
+          for (let k = 0; k < offs.length; k++) { const r = { x1: cx + offs[k] - w / 2, y1, x2: cx + offs[k] + w / 2, y2: y1 + h, inn: 1 }; if (!hit(r)) { pick = r; break; } }
+          for (let k = 0; !pick && k < offs.length; k++) { // hết chỗ trống: chấp nhận đè lên nến, nhưng không đè lên nhãn khác
+            const r = { x1: cx + offs[k] - w / 2, y1, x2: cx + offs[k] + w / 2, y2: y1 + h, inn: 1 };
+            if (!occL.some((q) => r.x1 < q.x2 + 2 && r.x2 > q.x1 - 2 && r.y1 < q.y2 + 1 && r.y2 > q.y1 - 1)) pick = r;
+          }
+          if (!pick) pick = { x1: cx - w / 2, y1, x2: cx + w / 2, y2: y1 + h, inn: 1 };
+          occL.push(pick); return pick;
+        }
         if (q.kind === 'pill') {
           const dirs = q.pos === 'below' ? [1, -1] : [-1, 1];
           for (let di = 0; di < 2; di++) for (let k = 0; k <= 8; k++) for (const dx of [0, -1, 1]) {
@@ -295,12 +307,12 @@
       if (D && L.has('fvg')) D.fvg.forEach((z) => {
         if (z.fill != null && z.fill < x0) return; const xa = px(Math.max(z.x1, x0)) - slot / 2, xe = z.fill != null ? px(z.fill) : right, c = z.dir === 1 ? 'a-bull' : 'a-bear';
         s += '<g class="a ' + c + '"><rect class="fl" fill-opacity="' + (z.fill != null ? 0.1 : 0.2) + '" x="' + xa + '" y="' + py(z.top) + '" width="' + Math.max(2, xe - xa) + '" height="' + Math.max(1, py(z.bot) - py(z.top)) + '"/><line class="ln dot" x1="' + xa + '" x2="' + xe + '" y1="' + py((z.top + z.bot) / 2) + '" y2="' + py((z.top + z.bot) / 2) + '"/></g>';
-        if (z.fill == null) req({ text: 'FVG', ax: xa + 2, ay: py(z.top), anchor: 'start', side: -1, tc: 'tx sm', g: 'a ' + c, pri: 2, maxK: 4 });
+        if (z.fill == null) req({ text: 'FVG', box: { x1: xa, x2: xe, y1: py(z.top), y2: py(z.bot) }, tc: 'tx sm', g: 'a ' + c, pri: 2 });
       });
       if (D && L.has('ob')) D.ob.slice(-5).forEach((z) => {
         if (z.inv != null && z.inv < x0) return; const xa = px(Math.max(z.i, x0)) - slot / 2, xe = z.inv != null ? px(z.inv) : right, c = z.dir === 1 ? 'a-bull' : 'a-bear', ww = Math.max(2, xe - xa), hh = Math.max(1, py(z.bot) - py(z.top));
         s += '<g class="a ' + c + '"><rect class="fl" fill-opacity="' + (z.inv != null ? 0.08 : 0.22) + '" x="' + xa + '" y="' + py(z.top) + '" width="' + ww + '" height="' + hh + '"/><rect class="ln" fill="none" x="' + xa + '" y="' + py(z.top) + '" width="' + ww + '" height="' + hh + '"/></g>';
-        req({ text: z.dir === 1 ? 'Bull OB' : 'Bear OB', ax: xa + 2, ay: z.dir === 1 ? py(z.bot) : py(z.top), anchor: 'start', side: z.dir === 1 ? 1 : -1, tc: 'tx sm', g: 'a ' + c, pri: 2, maxK: 4 });
+        req({ text: z.dir === 1 ? 'Bull OB' : 'Bear OB', box: { x1: xa, x2: xa + ww, y1: py(z.top), y2: py(z.bot) }, tc: 'tx sm', g: 'a ' + c, pri: 2 });
       });
       if (D && L.has('liq')) {
         D.eq.forEach((q) => {
@@ -343,7 +355,7 @@
         }
         if (a.t === 'zone') {
           const ia = Math.max(S.X(a.x1), x0), ie = a.x2 == null || a.x2 === 'end' ? null : Math.min(S.X(a.x2), i1 - 1), ya = py(S.Y(a.y1)), yb = py(S.Y(a.y2)), xa = px(ia) - slot / 2, xe = ie == null ? right : px(ie) + slot / 2, y = Math.min(ya, yb), h = Math.max(2, Math.abs(ya - yb));
-          if (a.text) req({ text: a.text, ax: xa + 3, ay: a.below ? y + h : y, anchor: 'start', side: a.below ? 1 : -1, tc: 'tx sm', g, pri: 1 });
+          if (a.text) req({ text: a.text, box: { x1: xa, x2: Math.max(xa + 2, xe), y1: y, y2: y + h }, tc: 'tx sm', g, pri: 1 });
           return '<g class="' + g + '"><rect class="fl" fill-opacity="' + (a.op || 0.2) + '" x="' + xa + '" y="' + y + '" width="' + Math.max(2, xe - xa) + '" height="' + h + '"/><rect class="ln" fill="none" stroke-opacity=".7" x="' + xa + '" y="' + y + '" width="' + Math.max(2, xe - xa) + '" height="' + h + '"/>' + (a.ce ? '<line class="ln dot" x1="' + xa + '" x2="' + xe + '" y1="' + (y + h / 2) + '" y2="' + (y + h / 2) + '"/>' : '') + '</g>';
         }
         if (a.t === 'line' || a.t === 'arrow') {
@@ -379,7 +391,8 @@
         if (q.kind === 'pill') {
           const below = r.y1 > q.ay, lx = clamp(q.ax, r.x1 + 4, r.x2 - 4), ly = below ? r.y1 : r.y2;
           s += '<g class="' + q.g + '"><line class="ln" stroke-opacity=".55" x1="' + q.ax + '" y1="' + q.ay + '" x2="' + lx + '" y2="' + ly + '"/><rect class="pl" x="' + r.x1 + '" y="' + r.y1 + '" width="' + q.w + '" height="' + q.h + '" rx="3"/><text class="tx" x="' + (r.x1 + q.w / 2) + '" y="' + (r.y1 + 12) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
-        } else s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl" x="' + (r.x1 + 2) + '" y="' + (r.y2 - 3) + '">' + esc(q.text) + '</text></g>';
+        } else if (r.inn) s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl in" x="' + ((r.x1 + r.x2) / 2) + '" y="' + (r.y2 - 3) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
+        else s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl" x="' + (r.x1 + 2) + '" y="' + (r.y2 - 3) + '">' + esc(q.text) + '</text></g>';
       });
       if (o.pos) {
         const p = o.pos, xa = px(p.i), mk = (y, cls, t) => '<line class="ps ' + cls + '" x1="' + xa + '" x2="' + right + '" y1="' + py(y) + '" y2="' + py(y) + '"/><text class="ax ' + cls + 't" x="' + (right - 4) + '" y="' + (py(y) - 3) + '" text-anchor="end">' + t + '</text>';
