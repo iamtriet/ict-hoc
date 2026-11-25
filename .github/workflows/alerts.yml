@@ -4,6 +4,10 @@ name: XAUUSD alerts
 # vốn hay trễ hoặc bỏ lượt). Cron mỗi giờ chỉ là lưới an toàn: nếu chuỗi bị đứt thì cron nối lại.
 # Cần repo public (không giới hạn phút Actions).
 on:
+  push:
+    # đổi mã của bot thì chạy lại ngay bằng mã mới (lượt đang chạy bị thay thế)
+    branches: [main]
+    paths: ['.github/workflows/alerts.yml', 'scripts/notify.js', 'scripts/watch.js', 'scripts/chart.js', 'assets/engine.js', 'assets/analyst-core.js']
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
@@ -23,7 +27,7 @@ permissions:
 
 concurrency:
   group: xau-alerts
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   scan:
