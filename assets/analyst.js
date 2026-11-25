@@ -6,6 +6,15 @@
   let SYM = A.SYMS.XAUUSD; // mã đang phân tích
   const f2 = (x) => (+x).toFixed(SYM.dec);
   const offOf = () => (SYM.id === 'XAUUSD' ? +cfgGet().off || 0 : 0); // chênh lệch giá chỉ dùng cho vàng (PAXG ↔ spot)
+  /* chênh lệch PAXG ↔ giá vàng spot: lấy từ gold-api.com (cập nhật ~30 giây) và giá PAXG hiện tại, hiệu chỉnh lại mỗi 4 phút khi phân tích */
+  const SPOT = { t: 0 };
+  async function spotOff() {
+    const ac = new AbortController(), to = setTimeout(() => ac.abort(), 5000);
+    try {
+      const [r, t] = await Promise.all([fetch('https://api.gold-api.com/price/XAU', { cache: 'no-store', signal: ac.signal }).then((x) => x.json()), getJSON('/api/v3/ticker/price?symbol=PAXGUSDT')]);
+      const off = Math.round((+r.price - +t.price) * 100) / 100; if (!isFinite(off) || Math.abs(off) > 25) throw new Error('chênh lệch bất thường'); SPOT.t = Date.now(); return off;
+    } finally { clearTimeout(to); }
+  }
   const modeOf = () => cfgGet()['mode_' + SYM.id] || SYM.mode || 'both'; // mô hình mặc định theo mã (crypto: chỉ ICT)
   const cfgGet = () => { try { return JSON.parse(localStorage.getItem('ict.an.cfg')) || {}; } catch (e) { return {}; } };
   const cfgSet = (o) => { try { localStorage.setItem('ict.an.cfg', JSON.stringify(Object.assign(cfgGet(), o))); } catch (e) { /* bỏ qua */ } };
@@ -320,13 +329,14 @@
       const cfg = cfgGet(); setStatus('Đang tải nến 15m, 1H, 4H…', ''); if (!keep) out.innerHTML = '<div class="an-wait">Đang tải dữ liệu và phân tích…</div>';
       if (force || !RAW || RAW.sym !== SYM.id || Date.now() - RAW.at > 20000) { let raw = null; if (RAW && RAW.sym === SYM.id) { try { raw = await refreshRaw(RAW); } catch (e) { raw = null; } } if (!raw) raw = await loadAll(1000); if (raw.sym !== SYM.id) return; RAW = raw; }
       stage = 'an';
+      if (SYM.id === 'XAUUSD' && cfg.autoOff !== false && !ASOF && Date.now() - SPOT.t > 240000) { try { const o = await spotOff(); cfgSet({ off: o }); const ie = $('#an-off', view); if (ie) ie.value = o; } catch (e) { /* giữ mức chênh lệch cũ */ } }
       const off = offOf(), T = ASOF;
       const cut = (a, ms) => (T ? a.filter((x) => x.t + ms <= T) : a);
       const F = { m15: shift(cut(T && BIG ? BIG : RAW.m15, 900000), off), h1: shift(cut(RAW.h1, 3600000), off), h4: shift(cut(RAW.h4, 14400000), off), m5: shift(cut(RAW.m5, 300000), off) };
       SNAP = keep ? snap() : null; LVR.forEach((c) => clearTimeout(c.timer)); LVR.length = 0; LV.off = off;
       const res = A.analyze(F, { mode: modeOf(), sym: SYM.id }); res.n = F.m15.length; res.m15 = F.m15; OUT = { F, res };
       let h = T ? '<div class="callout tip"><p><b>Đang xem lại quá khứ:</b> đây là đúng những gì công cụ sẽ hiển thị tại thời điểm đó (chỉ dùng nến đã đóng).</p><div class="an-btns"><button type="button" class="btn pri" id="an-back">⟲ Quay về hiện tại</button></div></div>' : '';
-      h += '<p class="an-meta">Nến 15m mới nhất đóng lúc <b>' + esc(A.tm(res.now)) + '</b> · giá <b>' + f2(res.price) + '</b>' + (off ? ' (đã cộng chênh lệch ' + (off > 0 ? '+' : '') + f2(off) + ')' : '') + '</p>';
+      h += '<p class="an-meta">Nến 15m mới nhất đóng lúc <b>' + esc(A.tm(res.now)) + '</b> · giá <b>' + f2(res.price) + '</b>' + (off ? ' (đã cộng chênh lệch ' + (off > 0 ? '+' : '') + f2(off) + (cfgGet().autoOff !== false ? ', tự hiệu chỉnh theo giá spot' : '') + ')' : '') + '</p>';
       if (res.closed) h += '<div class="callout warn"><p>' + esc(res.notes[0]) + '</p></div>';
       h += biasHtml(res);
       if (res.setups.length) res.setups.forEach((s, k) => (h += setupHtml(s, res, k))); else if (!res.closed) h += emptyHtml(res);
@@ -380,7 +390,7 @@
       '<div class="an-bar"><label>Mã <select id="an-sym">' + Object.keys(A.SYMS).map((k) => '<option value="' + k + '">' + A.SYMS[k].name + ' · ' + A.SYMS[k].label + '</option>').join('') + '</select></label><button type="button" class="btn pri" id="an-run">⟳ Phân tích ngay</button>' +
       '<label class="an-auto" title="Khi nến 15m đóng, tự chạy lại phân tích (giữ nguyên zoom và các lớp bạn đã bật). Không chạy nếu bạn vừa thao tác trong 45 giây."><input type="checkbox" id="an-auto"> Tự cập nhật khi nến 15m đóng</label>' +
       '<label>Mô hình <select id="an-mode"><option value="both">ICT + Price Action</option><option value="ict">Chỉ ICT</option><option value="pa">Chỉ Price Action</option></select></label>' +
-      '<span id="an-offbox"><label>Chênh lệch giá (cộng vào) <input id="an-off" type="number" step="0.1" value="' + (+cfg.off || 0) + '" style="width:90px"></label><button type="button" class="btn sm" id="an-spot" title="So giá PAXG với giá vàng spot (gold-api.com) rồi điền chênh lệch">Lấy theo giá spot</button></span><span id="an-st" class="an-st"></span><span id="an-live" class="an-live"></span></div>' +
+      '<span id="an-offbox"><label>Chênh lệch giá (cộng vào) <input id="an-off" type="number" step="0.1" value="' + (+cfg.off || 0) + '" style="width:90px"></label><button type="button" class="btn sm" id="an-spot" title="So giá PAXG với giá vàng spot (gold-api.com) rồi điền chênh lệch">Lấy theo giá spot</button><label class="an-auto" title="Tự lấy chênh lệch theo giá spot khi mở trang và mỗi lần phân tích (tối đa 4 phút một lần). Tắt nếu bạn muốn tự nhập."><input type="checkbox" id="an-autooff"> Tự động</label></span><span id="an-st" class="an-st"></span><span id="an-live" class="an-live"></span></div>' +
       '<p class="muted" id="an-note"></p>' +
       '<div id="an-out"></div></div>';
     const symUi = () => {
@@ -396,10 +406,11 @@
       const go = () => (running ? setTimeout(go, 250) : run(view, true)); go();
     };
     $('#an-mode', view).onchange = (e) => { cfgSet({ ['mode_' + SYM.id]: e.target.value }); run(view, false); };
-    $('#an-off', view).onchange = (e) => { cfgSet({ off: +e.target.value || 0 }); run(view, false); };
+    $('#an-autooff', view).checked = cfg.autoOff !== false; $('#an-autooff', view).onchange = (e) => { cfgSet({ autoOff: e.target.checked }); SPOT.t = 0; run(view, true); };
+    $('#an-off', view).onchange = (e) => { cfgSet({ off: +e.target.value || 0, autoOff: false }); $('#an-autooff', view).checked = false; run(view, false); };
     $('#an-run', view).onclick = () => run(view, true);
     $('#an-spot', view).onclick = async () => {
-      try { setStatus('Đang lấy giá spot…', ''); const r = await fetch('https://api.gold-api.com/price/XAU', { cache: 'no-store' }), j = await r.json(); if (!RAW || RAW.sym !== 'XAUUSD') RAW = await loadAll(1000); const last = RAW.m15[RAW.m15.length - 1].c, off = Math.round((j.price - last) * 100) / 100; $('#an-off', view).value = off; cfgSet({ off }); setStatus('Spot ' + f2(j.price) + ' − PAXG ' + f2(last) + ' = ' + f2(off), 'ok'); run(view, false); } catch (e) { setStatus('Không lấy được giá spot', 'no'); }
+      try { setStatus('Đang lấy giá spot…', ''); const off = await spotOff(); $('#an-off', view).value = off; cfgSet({ off }); setStatus('Chênh lệch spot − PAXG = ' + f2(off), 'ok'); run(view, false); } catch (e) { setStatus('Không lấy được giá spot', 'no'); }
     };
     view.addEventListener('click', (e) => {
       const ao = e.target.closest('button[data-asof]'); if (ao) { window.scrollTo({ top: 0, behavior: 'smooth' }); run(view, true, +ao.dataset.asof); return; }

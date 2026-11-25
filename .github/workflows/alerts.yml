@@ -1,6 +1,6 @@
 name: XAUUSD alerts
 
-# Một lượt chạy giữ máy ~5h40 và quét mỗi 5 phút, cuối lượt tự gọi lại chính nó (không phụ thuộc cron của GitHub,
+# Một lượt chạy giữ máy ~5h40: nghe WebSocket Binance và quét ngay khi nến 15m đóng (trễ vài giây), thêm một lượt dự phòng mỗi 5 phút; cuối lượt tự gọi lại chính nó (không phụ thuộc cron của GitHub,
 # vốn hay trễ hoặc bỏ lượt). Cron mỗi giờ chỉ là lưới an toàn: nếu chuỗi bị đứt thì cron nối lại.
 # Cần repo public (không giới hạn phút Actions).
 on:
@@ -60,7 +60,7 @@ jobs:
           HB_HOUR: ${{ vars.HB_HOUR }}
           SYMBOLS: ${{ vars.SYMBOLS }}
           PRICE_OFFSET: ${{ vars.PRICE_OFFSET }}
-        run: bash scripts/loop.sh
+        run: node scripts/watch.js
 
       - name: Lưu danh sách đã thông báo
         if: always()

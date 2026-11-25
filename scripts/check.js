@@ -9,7 +9,6 @@ const fail = (m) => { bad++; console.log('✖ ' + m); }, ok = (m) => console.log
 const files = ['sw.js'].concat(fs.readdirSync(path.join(ROOT, 'assets')).filter((f) => f.endsWith('.js')).map((f) => 'assets/' + f), fs.readdirSync(__dirname).filter((f) => f.endsWith('.js')).map((f) => 'scripts/' + f));
 files.forEach((f) => { try { new vm.Script(fs.readFileSync(path.join(ROOT, f), 'utf8'), { filename: f }); } catch (e) { fail('Cú pháp ' + f + ': ' + e.message); } });
 if (!bad) ok('Cú pháp ' + files.length + ' file JS');
-try { new vm.Script(fs.readFileSync(path.join(ROOT, 'scripts/loop.sh'), 'utf8').includes('\r') ? '(' : '1'); } catch (e) { fail('loop.sh có ký tự xuống dòng kiểu Windows (CRLF)'); }
 
 // 2. lõi phân tích
 const win = { setTimeout, clearTimeout, console }; win.window = win; vm.createContext(win);
