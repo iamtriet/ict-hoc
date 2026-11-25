@@ -1,9 +1,9 @@
 /* Vẽ ảnh biểu đồ 15m (SVG) cho thông báo: nến, vùng vào, Entry/SL/TP, điểm quét thanh khoản và MSS. */
 'use strict';
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const f2 = (x) => (+x).toFixed(2);
 
 module.exports = function chartSvg(m15, s, info) {
+  const dec = info.dec == null ? 2 : info.dec, f2 = (x) => (+x).toFixed(dec);
   const W = 1000, H = 560, L = 16, R = 86, T = 64, B = 70, buy = s.dir === 'BUY';
   const idx = [s.ready, s.mss ? s.mss.i : s.ready, s.sweep ? s.sweep.i : s.ready, s.zone ? s.zone.x1 : s.ready];
   let a = Math.max(0, Math.min.apply(null, idx) - 24); a = Math.min(a, m15.length - 60); a = Math.max(a, m15.length - 150);
@@ -33,9 +33,9 @@ module.exports = function chartSvg(m15, s, info) {
   const x0 = X(s.ready), line = (p, col, label) => '<line x1="' + x0 + '" x2="' + right + '" y1="' + Y(p) + '" y2="' + Y(p) + '" stroke="' + col + '" stroke-width="1.6" stroke-dasharray="7 4"/><rect x="' + (right - 150) + '" y="' + (Y(p) - 9) + '" width="150" height="18" rx="3" fill="' + BG + '" fill-opacity="0.85"/><text x="' + (right - 6) + '" y="' + (Y(p) + 4) + '" font-size="12.5" font-weight="bold" fill="' + col + '" text-anchor="end">' + label + ' ' + f2(p) + '</text>';
   o += line(s.tp2, UP, 'TP2') + line(s.tp1, UP, 'TP1') + line(s.entry, BLUE, buy ? 'BUY' : 'SELL') + line(s.sl, DN, 'SL');
   // tiêu đề + chân trang
-  o += '<text x="' + L + '" y="26" font-size="19" font-weight="bold" fill="' + FG + '">XAUUSD 15m · ' + (buy ? 'MUA' : 'BÁN') + ' · ' + esc(s.title) + '</text>';
-  o += '<text x="' + L + '" y="48" font-size="13" fill="' + MUTE + '">Điểm ' + s.score + '/100 (' + s.grade + ') · RR TP1 1:' + s.rr1 + ' · TP2 1:' + s.rr2 + ' · rủi ro $' + f2(s.risk) + '/oz</text>';
+  o += '<text x="' + L + '" y="26" font-size="19" font-weight="bold" fill="' + FG + '">' + esc(info.name || 'XAUUSD') + ' 15m · ' + (buy ? 'MUA' : 'BÁN') + ' · ' + esc(s.title) + '</text>';
+  o += '<text x="' + L + '" y="48" font-size="13" fill="' + MUTE + '">Điểm ' + s.score + '/100 (' + s.grade + ') · RR TP1 1:' + s.rr1 + ' · TP2 1:' + s.rr2 + ' · rủi ro $' + f2(s.risk) + (info.unit == null ? '/oz' : info.unit) + '</text>';
   o += '<text x="' + L + '" y="' + (H - 40) + '" font-size="12.5" fill="' + FG + '">' + esc(info.bias) + '</text>';
-  o += '<text x="' + L + '" y="' + (H - 20) + '" font-size="11.5" fill="' + MUTE + '">' + esc(info.when) + ' · dữ liệu PAXG, đã quy đổi về giá spot gần đúng · nội dung giáo dục, không phải lời khuyên đầu tư</text>';
+  o += '<text x="' + L + '" y="' + (H - 20) + '" font-size="11.5" fill="' + MUTE + '">' + esc(info.when) + ' · ' + esc(info.foot || 'dữ liệu PAXG, đã quy đổi về giá spot gần đúng') + ' · nội dung giáo dục, không phải lời khuyên đầu tư</text>';
   return o + '</svg>';
 };

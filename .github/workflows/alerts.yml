@@ -58,6 +58,7 @@ jobs:
           MODE: ${{ vars.MODE }}
           SITE_URL: ${{ vars.SITE_URL }}
           HB_HOUR: ${{ vars.HB_HOUR }}
+          SYMBOLS: ${{ vars.SYMBOLS }}
           PRICE_OFFSET: ${{ vars.PRICE_OFFSET }}
         run: bash scripts/loop.sh
 

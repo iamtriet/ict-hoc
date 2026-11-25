@@ -5,6 +5,19 @@
   const ICT = window.ICT, A = (ICT.analyst = {});
   const MS = { m15: 900000, h1: 3600000, h4: 14400000 };
   const KZ = [[120, 300, 'London'], [420, 600, 'New York AM'], [810, 960, 'New York PM']];
+  /* cấu hình theo mã: bn = cặp Binance, kr = cặp Kraken (dự phòng), tv = mã TradingView, dec = số lẻ hiển thị.
+     minRisk / buf / cost: số tuyệt đối (vàng) hoặc tỷ lệ theo giá (mrp, bp, cp) cho crypto. closes = có nghỉ cuối tuần. */
+  const SYMS = {
+    XAUUSD: { id: 'XAUUSD', name: 'XAUUSD', label: 'Vàng', bn: 'PAXGUSDT', kr: 'PAXGUSD', tv: 'OANDA:XAUUSD', src: 'PAXG/USDT', dec: 2, minRisk: 2.0, buf: 0.25, cost: 0.4, unit: '/oz', closes: true, mode: 'both', bt: 'Kiểm chứng 122 ngày: ICT + PA tổng +10.7R (54 lệnh khớp, profit factor 1.3); ICT −0.4R, PA +11.1R nhưng PA chỉ 11 lệnh.' },
+    ETHUSD: { id: 'ETHUSD', name: 'ETHUSD', label: 'Ethereum', bn: 'ETHUSDT', kr: 'ETHUSD', tv: 'BINANCE:ETHUSDT', src: 'ETH/USDT', dec: 2, mrp: 0.0006, bp: 0.00005, cp: 0.0005, unit: '', closes: false, mode: 'ict', bt: 'Kiểm chứng 122 ngày: ICT +4.1R (67 lệnh), Price Action −8.5R → mặc định chỉ dùng ICT.' },
+    SOLUSD: { id: 'SOLUSD', name: 'SOLUSD', label: 'Solana', bn: 'SOLUSDT', kr: 'SOLUSD', tv: 'BINANCE:SOLUSDT', src: 'SOL/USDT', dec: 3, mrp: 0.0006, bp: 0.00005, cp: 0.0005, unit: '', closes: false, mode: 'ict', bt: 'Kiểm chứng 122 ngày: ICT +4.1R (72 lệnh), Price Action −8.3R → mặc định chỉ dùng ICT.' },
+    XRPUSD: { id: 'XRPUSD', name: 'XRPUSD', label: 'XRP', bn: 'XRPUSDT', kr: 'XRPUSD', tv: 'BINANCE:XRPUSDT', src: 'XRP/USDT', dec: 4, mrp: 0.0006, bp: 0.00005, cp: 0.0005, unit: '', closes: false, mode: 'ict', bt: 'Kiểm chứng 122 ngày: ICT +8.8R (55 lệnh), Price Action −8.1R → mặc định chỉ dùng ICT.' },
+    BNBUSD: { id: 'BNBUSD', name: 'BNBUSD', label: 'BNB', bn: 'BNBUSDT', kr: null, tv: 'BINANCE:BNBUSDT', src: 'BNB/USDT', dec: 2, mrp: 0.0006, bp: 0.00005, cp: 0.0005, unit: '', closes: false, mode: 'ict', bt: 'Kiểm chứng 122 ngày: ICT +7.8R (63 lệnh), Price Action −14.6R → mặc định chỉ dùng ICT.' },
+    BTCUSD: { id: 'BTCUSD', name: 'BTCUSD', label: 'Bitcoin', bn: 'BTCUSDT', kr: 'XBTUSD', tv: 'BINANCE:BTCUSDT', src: 'BTC/USDT', dec: 1, mrp: 0.0006, bp: 0.00005, cp: 0.0005, unit: '', closes: false, mode: 'ict', bt: 'Kiểm chứng 122 ngày: ICT −12.3R (52 lệnh), Price Action −4.8R → các quy tắc này KHÔNG hợp với BTC trong giai đoạn đã thử; chỉ nên xem để học.' },
+  };
+  const resolveCfg = (id, price) => { const b = SYMS[id] || SYMS.XAUUSD, c = Object.assign({}, b); if (c.minRisk == null) { c.minRisk = price * b.mrp; c.buf = price * b.bp; c.cost = price * b.cp; } return c; };
+  let CFG = resolveCfg('XAUUSD', 3500);
+  A.SYMS = SYMS; A.cfg = (id, price) => (CFG = resolveCfg(id, price));
 
   /* ---------- thời gian ---------- */
   const fNY = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -13,8 +26,7 @@
   const ny = (t) => { let r = nyc.get(t); if (r) return r; const q = {}; fNY.formatToParts(new Date(t)).forEach((z) => (q[z.type] = z.value)); r = { min: +q.hour * 60 + +q.minute, day: q.year + '-' + q.month + '-' + q.day }; nyc.set(t, r); return r; };
   const p2 = (n) => (n < 10 ? '0' : '') + n;
   A.tm = (t) => { const a = ny(t), q = {}; fVN.formatToParts(new Date(t)).forEach((z) => (q[z.type] = z.value)); return p2(Math.floor(a.min / 60)) + ':' + p2(a.min % 60) + ' NY (' + q.hour + ':' + q.minute + ' VN, ' + q.day + '/' + q.month + ')'; };
-  const MINRISK = 2.0; // khoảng SL tối thiểu (USD/oz): nhỏ hơn mức này gần bằng spread của broker
-  const closedAt = (t) => { const a = ny(t), dw = new Date(a.day + 'T12:00:00Z').getUTCDay(); return (dw === 5 && a.min >= 1020) || dw === 6 || (dw === 0 && a.min < 1080); };
+  const closedAt = (t) => { if (!CFG.closes) return false; const a = ny(t), dw = new Date(a.day + 'T12:00:00Z').getUTCDay(); return (dw === 5 && a.min >= 1020) || dw === 6 || (dw === 0 && a.min < 1080); };
   A.closedAt = closedAt;
   const kzOf = (t) => { const m = ny(t).min; for (const k of KZ) if (m >= k[0] && m < k[1]) return k[2]; return null; };
 
@@ -23,8 +35,8 @@
   const atrAt = (b, end, n) => { n = n || 14; end = Math.min(end == null ? b.length : end, b.length); let s = 0, c = 0; for (let i = Math.max(1, end - n); i < end; i++) { s += Math.max(b[i].h - b[i].l, Math.abs(b[i].h - b[i - 1].c), Math.abs(b[i].l - b[i - 1].c)); c++; } return c ? s / c : 0; };
   const mir = (b) => b.map((x) => ({ t: x.t, o: -x.o, h: -x.l, l: -x.h, c: -x.c }));
   const det = (bars) => { const S = { bars, swing: 2, vol: med(bars.map((x) => x.h - x.l)) || 1, eqTol: 0.35, _d: {} }; return { S, D: ICT.detect(S, bars.length) }; };
-  const f2 = (x) => (Math.round(x * 100) / 100).toFixed(2);
-  const round2 = (x) => Math.round(x * 100) / 100;
+  const f2 = (x) => (+x).toFixed(CFG.dec);
+  const round2 = (x) => { const m = Math.pow(10, CFG.dec); return Math.round(x * m) / m; };
 
   /* ---------- mốc thanh khoản theo giờ New York ---------- */
   function keyLevels(b, end) {
@@ -123,8 +135,8 @@
       if (zs.length) { zone = zs[0]; const o = obs.find((q) => q.bot <= zone.top && q.top >= zone.bot); if (o) { conf = true; zone = { type: 'FVG+OB', top: Math.min(zone.top, o.top), bot: Math.max(zone.bot, o.bot), ready: Math.max(zone.ready, o.ready), x1: Math.min(zone.x1, o.x1), fvg: zone, ob: o }; if (zone.top <= zone.bot) { zone = zs[0]; conf = false; } } }
       else if (obs.length) zone = obs[0];
       if (!zone) return;
-      const entry = (zone.top + zone.bot) / 2, buf = Math.max(0.12 * atr, 0.25), sl = ext - buf, risk = entry - sl;
-      if (risk < Math.max(0.35 * atr, MINRISK) || risk > 3 * atr) return;
+      const entry = (zone.top + zone.bot) / 2, buf = Math.max(0.12 * atr, CFG.buf), sl = ext - buf, risk = entry - sl;
+      if (risk < Math.max(0.35 * atr, CFG.minRisk) || risk > 3 * atr) return;
       const cand = targets(V, entry, risk), pk = pickTargets(cand, entry, risk); if (!pk) return;
       const s = { model: 'ICT', ready: Math.max(zone.ready, e.i), entry, sl, tp1: pk.t1.p, tp2: pk.t2.p, zoneTop: zone.top, zoneBot: zone.bot };
       const tk = track(b, s, s.ready + 1);
@@ -155,8 +167,8 @@
       }
       if (q < 0) return;
       let low = 1e9; for (let j = j0; j <= q; j++) low = Math.min(low, b[j].l);
-      const entry = b[q].c, buf = Math.max(0.12 * atr, 0.25), sl = low - buf, risk = entry - sl;
-      if (risk < Math.max(0.4 * atr, MINRISK) || risk > 2.5 * atr) return;
+      const entry = b[q].c, buf = Math.max(0.12 * atr, CFG.buf), sl = low - buf, risk = entry - sl;
+      if (risk < Math.max(0.4 * atr, CFG.minRisk) || risk > 2.5 * atr) return;
       const cand = targets(V, entry, risk, [{ p: P1, name: 'Đỉnh trước khi hồi (swing vừa tạo)' }]), pkt = pickTargets(cand, entry, risk); if (!pkt) return;
       const s = { model: 'PA', q, ready: q, entry, sl, tp1: pkt.t1.p, tp2: pkt.t2.p, zoneTop: entry };
       const tk = track(b, s, q + 1);
@@ -230,7 +242,7 @@
   /* ---------- Phân tích chính ---------- */
   A.analyze = function (F, opt) {
     opt = opt || {};
-    const { m15, h1, h4 } = F, n = m15.length, price = m15[n - 1].c, res = { now: m15[n - 1].t + MS.m15, price, setups: [], recent: [], watch: [], notes: [] };
+    const { m15, h1, h4 } = F, n = m15.length, price = m15[n - 1].c, res = { now: m15[n - 1].t + MS.m15, price, setups: [], recent: [], watch: [], notes: [], sym: A.cfg(opt.sym || 'XAUUSD', price) };
     if (n < 120 || h1.length < 60 || h4.length < 40) { res.notes.push('Chưa đủ dữ liệu nến để phân tích.'); return res; }
     const B = biasOf(h4, h1, price); res.bias = B; res.closed = closedAt(res.now);
     if (res.closed) { res.notes.push('Thị trường vàng đang nghỉ cuối tuần (PAXG vẫn có giá nhưng thanh khoản mỏng): không phát tín hiệu.'); return res; }
@@ -276,13 +288,13 @@
   /* ---------- Kiểm chứng trên dữ liệu gần đây (không nhìn tương lai) ---------- */
   A.backtest = function (F, opt, progress, done) {
     opt = opt || {}; const { m15, h1, h4 } = F, N = m15.length, start = Math.max(260, opt.start || 260);
-    const trades = [], seen = {}, win = 400, cost = opt.cost == null ? 0.4 : opt.cost, busy = { 1: -1, '-1': -1 }, VB = { 1: m15, '-1': mir(m15) }; let i = start, k1 = 0, k4 = 0;
+    const trades = [], seen = {}, win = 400, cost = opt.cost == null ? A.cfg(opt.sym || 'XAUUSD', m15[N - 1].c).cost : opt.cost, busy = { 1: -1, '-1': -1 }, VB = { 1: m15, '-1': mir(m15) }; let i = start, k1 = 0, k4 = 0;
     function step() {
       const t0 = Date.now();
       while (i < N - 1 && Date.now() - t0 < 40) {
         const T = m15[i].t + MS.m15; while (k1 < h1.length && h1[k1].t + MS.h1 <= T) k1++; while (k4 < h4.length && h4[k4].t + MS.h4 <= T) k4++;
         if (k1 >= 60 && k4 >= 40 && !closedAt(T)) {
-          const r = A.analyze({ m15: m15.slice(Math.max(0, i + 1 - win), i + 1), h1: h1.slice(Math.max(0, k1 - 260), k1), h4: h4.slice(Math.max(0, k4 - 120), k4) }, { mode: opt.mode, minScore: opt.minScore });
+          const r = A.analyze({ m15: m15.slice(Math.max(0, i + 1 - win), i + 1), h1: h1.slice(Math.max(0, k1 - 260), k1), h4: h4.slice(Math.max(0, k4 - 120), k4) }, { mode: opt.mode, minScore: opt.minScore, sym: opt.sym });
           r.setups.forEach((s) => {
             if (seen[s.id]) return; if (s.model === 'ICT' && ['pending', 'inzone'].indexOf(s.state) < 0) return; if (s.model === 'PA' && s.state !== 'pending' && s.state !== 'active') return;
             if (s.model === 'PA' && s.ready !== Math.min(win, i + 1) - 1) return;
