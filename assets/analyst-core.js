@@ -8,8 +8,8 @@
   /* cấu hình theo mã: bn = cặp Binance, kr = cặp Kraken (dự phòng), tv = mã TradingView, dec = số lẻ hiển thị.
      minRisk / buf / cost: số tuyệt đối (vàng) hoặc tỷ lệ theo giá (mrp, bp, cp) cho crypto. closes = có nghỉ cuối tuần. */
   const SYMS = {
-    XAUUSD: { id: 'XAUUSD', name: 'XAUUSD', label: 'Vàng', bn: 'PAXGUSDT', kr: 'PAXGUSD', tv: 'OANDA:XAUUSD', src: 'PAXG/USDT', dec: 2, minRisk: 2.0, buf: 0.25, cost: 0.4, unit: '/oz', closes: true, mode: 'both', bt: 'Kiểm chứng 122 ngày: ICT + PA tổng +10.7R (54 lệnh khớp, profit factor 1.3); ICT −0.4R, PA +11.1R nhưng PA chỉ 11 lệnh.' },
-    BTCUSD: { id: 'BTCUSD', name: 'BTCUSD', label: 'Bitcoin', bn: 'BTCUSDT', kr: 'XBTUSD', tv: 'BINANCE:BTCUSDT', src: 'BTC/USDT', dec: 1, mrp: 0.0006, bp: 0.00005, cp: 0.0005, unit: '', closes: false, mode: 'both', bt: 'Kiểm chứng 122 ngày: ICT −12.3R (52 lệnh), Price Action −4.8R (20 lệnh): các quy tắc này KHÔNG có lãi với BTC trong giai đoạn đã thử, nên coi tín hiệu BTC chỉ là để tham khảo và học.' },
+    XAUUSD: { id: 'XAUUSD', name: 'XAUUSD', label: 'Vàng', bn: 'PAXGUSDT', kr: 'PAXGUSD', tv: 'OANDA:XAUUSD', src: 'PAXG/USDT', dec: 2, minRisk: 2.0, buf: 0.25, cost: 0.4, unit: '/oz', closes: true, mode: 'both', bt: 'Kiểm chứng 122 ngày: ICT + PA tổng +11.9R (53 lệnh khớp, profit factor 1.35); ICT +0.8R, PA +11.1R nhưng PA chỉ 11 lệnh.' },
+    BTCUSD: { id: 'BTCUSD', name: 'BTCUSD', label: 'Bitcoin', bn: 'BTCUSDT', kr: 'XBTUSD', tv: 'BINANCE:BTCUSDT', src: 'BTC/USDT', dec: 1, mrp: 0.0006, bp: 0.00005, cp: 0.0005, unit: '', closes: false, mode: 'both', bt: 'Kiểm chứng 122 ngày: ICT −6.6R (49 lệnh), Price Action −6.2R (21 lệnh): các quy tắc này KHÔNG có lãi với BTC trong giai đoạn đã thử, nên coi tín hiệu BTC chỉ là để tham khảo và học.' },
   };
   const resolveCfg = (id, price) => { const b = SYMS[id] || SYMS.XAUUSD, c = Object.assign({}, b); if (c.minRisk == null) { c.minRisk = price * b.mrp; c.buf = price * b.bp; c.cost = price * b.cp; } return c; };
   let CFG = resolveCfg('XAUUSD', 3500);
@@ -103,6 +103,7 @@
   }
   function pickTargets(cands, entry, risk) {
     const t1 = cands.find((x) => x.p >= entry + 1.0 * risk); if (!t1) return null;
+    if (t1.p > entry + 6 * risk) return { t1: { p: entry + 1.5 * risk, name: 'Mục tiêu 1.5R (thanh khoản gần nhất ở quá xa)' }, t2: { p: entry + 2.5 * risk, name: 'Mục tiêu 2.5R (thanh khoản gần nhất ở quá xa)' }, synthetic: true }; // tránh TP2 nằm gần hơn TP1
     let t2 = cands.find((x) => x.p >= entry + 2.0 * risk && x.p > t1.p + 1e-9 && x.p <= entry + 6 * risk), synthetic = false;
     if (!t2) { if (t1.p >= entry + 2.0 * risk && t1.p <= entry + 6 * risk) t2 = t1; else { t2 = { p: entry + 2.5 * risk, name: 'Mục tiêu 2.5R (không có thanh khoản rõ ở xa hơn)' }; synthetic = true; } }
     return { t1, t2, synthetic };

@@ -9,13 +9,23 @@
   const modeOf = () => cfgGet()['mode_' + SYM.id] || SYM.mode || 'both'; // mô hình mặc định theo mã (crypto: chỉ ICT)
   const cfgGet = () => { try { return JSON.parse(localStorage.getItem('ict.an.cfg')) || {}; } catch (e) { return {}; } };
   const cfgSet = (o) => { try { localStorage.setItem('ict.an.cfg', JSON.stringify(Object.assign(cfgGet(), o))); } catch (e) { /* bỏ qua */ } };
-  let RAW = null, BIG = null, OUT = null, running = false, btRun = 0, ASOF = null;
+  let RAW = null, BIG = null, OUT = null, running = false, btRun = 0, ASOF = null, SNAP = null, VIEW = null; const UI = { t: 0 };
 
   /* ---------- dữ liệu ---------- */
-  async function getJSON(path) {
-    let err = new Error('Không kết nối được');
-    for (const h of HOSTS) { try { const r = await fetch(h + path, { cache: 'no-store' }); if (r.ok) return await r.json(); err = new Error('HTTP ' + r.status); } catch (e) { err = e; } }
-    throw err;
+  let HI = 0; // máy chủ đã trả lời lần trước: được thử đầu tiên
+  function getJSON(path) {
+    return new Promise((resolve, reject) => {
+      const n = HOSTS.length, started = {}; let done = false, fails = 0;
+      const go = (k) => {
+        if (done || k >= n || started[k]) return; started[k] = 1;
+        const hi = (HI + k) % n, ac = new AbortController(), to = setTimeout(() => ac.abort(), 8000);
+        fetch(HOSTS[hi] + path, { cache: 'no-store', signal: ac.signal }).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .then((j) => { clearTimeout(to); if (done) return; done = true; HI = hi; resolve(j); })
+          .catch((e) => { clearTimeout(to); if (done) return; if (++fails >= n) reject(e && e.name === 'AbortError' ? new Error('Quá thời gian chờ máy chủ') : e); else go(k + 1); });
+        setTimeout(() => go(k + 1), 1500); // máy chủ chậm: hỏi thêm máy chủ dự phòng song song
+      };
+      go(0);
+    });
   }
   async function klines(iv, total, bn) {
     let out = [], end = null; bn = bn || SYM.bn;
@@ -29,7 +39,19 @@
   const shift = (a, off) => (off ? a.map((x) => ({ t: x.t, o: x.o + off, h: x.h + off, l: x.l + off, c: x.c + off })) : a);
   async function loadAll(n15) {
     const bn = SYM.bn, id = SYM.id, [m15, h1, h4, m5] = await Promise.all([klines('15m', n15 || 1000, bn), klines('1h', 1000, bn), klines('4h', 500, bn), klines('5m', 1000, bn)]);
-    return { m15: closed(m15), h1: closed(h1), h4: closed(h4), m5: closed(m5), at: Date.now(), sym: id };
+    return { m15: closed(m15), h1: closed(h1), h4: closed(h4), m5: closed(m5), at: Date.now(), sym: id, bn };
+  }
+  /* cập nhật gia tăng: chỉ hỏi vài nến gần nhất rồi ghép vào dữ liệu đang có (nhanh hơn tải lại cả nghìn nến); lệch quá thì ném lỗi để tải lại đầy đủ */
+  const TFV = { m5: 300000, m15: 900000, h1: 3600000, h4: 14400000 }, CAP = { m5: 1100, m15: 1100, h1: 1100, h4: 600 };
+  async function refreshRaw(raw) {
+    const spec = [['m15', '15m'], ['h1', '1h'], ['h4', '4h'], ['m5', '5m']], parts = await Promise.all(spec.map((x) => klines(x[1], 12, raw.bn))), nr = { sym: raw.sym, bn: raw.bn, at: Date.now() };
+    spec.forEach((x, i) => {
+      const k = x[0], arr = raw[k].slice(), got = closed(parts[i]); if (!arr.length || !got.length) throw new Error('thiếu nến');
+      if (got[0].t > arr[arr.length - 1].t + TFV[k]) throw new Error('lệch dữ liệu');
+      got.forEach((c) => { const e = arr[arr.length - 1]; if (c.t > e.t) arr.push(c); else if (c.t === e.t) arr[arr.length - 1] = c; });
+      nr[k] = arr.length > CAP[k] ? arr.slice(-CAP[k]) : arr;
+    });
+    return nr;
   }
 
   /* ---------- biểu đồ ---------- */
@@ -83,10 +105,13 @@
       });
       return out;
     };
-    const build = (rows, key, anns, extra, defStart) => {
+    const build = (rows, key, anns, extra, defStart) => { try { build0(rows, key, anns, extra, defStart); } catch (e) { console.error(key, e); hosts[key].innerHTML = '<div class="an-tvn">Không vẽ được khung ' + TFS[key][0] + ': ' + esc(e.message || String(e)) + '. Các khung khác vẫn dùng được; bấm "Phân tích ngay" để thử lại.</div>'; } };
+    const build0 = (rows, key, anns, extra, defStart) => {
       const S = mkS(rows, SYM.name + ' ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, Math.min(defStart || 0, rows.length - 20));
-      const ch = put(hosts[key], S, anns(U).concat(pastAnn(rows, U)), Object.assign({ pos: mkPos(rows, U), range: [ds, rows.length], h: 320, slotMin: 1, frames: false, lastLine: true }, extra || {}));
-      LVR.push({ key, S, ch, fig: hosts[key].closest('figure'), t: rows[rows.length - 1].t }); ZM.set(hosts[key].closest('figure'), { ch, len: rows.length, pad: (extra && extra.pad) || 12, s: ds, e: rows.length, def: [ds, rows.length] });
+      const sn = SNAP && SNAP[key]; let rg = [ds, rows.length]; if (sn) { const e = Math.max(20, Math.min(rows.length, rows.length - sn.tail)); rg = [Math.max(0, e - sn.n), e]; }
+      const opt = Object.assign({ pos: mkPos(rows, U), range: rg, h: 320, slotMin: 1, frames: false, lastLine: true }, extra || {}); if (sn) opt.layers = sn.layers;
+      const ch = put(hosts[key], S, anns(U).concat(pastAnn(rows, U)), opt);
+      LVR.push({ key, S, ch, fig: hosts[key].closest('figure'), t: rows[rows.length - 1].t }); ZM.set(hosts[key].closest('figure'), { ch, len: rows.length, pad: (extra && extra.pad) || 12, s: rg[0], e: rg[1], def: [ds, rows.length] });
     };
     // 15m: hiển thị mặc định từ trước điểm quét một chút; kéo/zoom để xem thêm lịch sử (tối đa 400 nến)
     const n15 = m15.length; let a = n15 - 110; if (s) a = Math.max(0, Math.min(s.sweep ? s.sweep.i : s.mss.i, s.ready, s.mss.i, s.zone ? s.zone.x1 : 1e9) - 24);
@@ -109,6 +134,7 @@
 
   /* zoom / kéo từng khung: nút − + ⟲, Ctrl + cuộn chuột, kéo ngang để xem lịch sử */
   const ZM = new WeakMap();
+  function snap() { const o = {}; LVR.forEach((c) => { const z = ZM.get(c.fig); if (z && c.ch) o[c.key] = { n: z.e - z.s, tail: Math.max(0, z.len - z.e), layers: [...c.ch.layers] }; }); return o; }
   function zApply(z) { z.ch.setOpt('range', [z.s, z.e]); }
   function zoom(fig, f) {
     const z = ZM.get(fig); if (!z) return;
@@ -254,12 +280,18 @@
       c.timer = setTimeout(() => { c.timer = 0; if (!c.fig.isConnected || document.hidden || !c.pend) return; try { paint(c, c.pend); } catch (e) { /* bỏ qua một lần vẽ lỗi */ } }, 600);
     });
   }
+  // tự phân tích lại khi nến 15m đóng, trừ khi bạn đang thao tác (kéo/zoom/bấm trong 45 giây gần nhất), đang xem lại quá khứ hoặc tab đang ẩn
+  const autoOk = () => cfgGet().auto !== false && !ASOF && VIEW && VIEW.isConnected && !document.hidden && Date.now() - UI.t > 45000;
   function onKline(k) {
     const key = KEYS[k.i]; if (!key) return; const r = { t: +k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, x: !!k.x };
     LV.last[key] = r; LV.lastMsg = Date.now();
     if (key === 'm5') { if (LV.price != null) LV.dir = r.c > LV.price ? 1 : r.c < LV.price ? -1 : LV.dir; LV.price = r.c; }
     applyRec(key, r);
-    if (key === 'm15' && r.x) { setStatus('Nến 15m vừa đóng: bấm "Phân tích ngay" để cập nhật phân tích với nến mới.', 'ok'); const b = $('#an-run'); if (b) b.classList.add('pulse'); }
+    if (key === 'm15' && r.x) {
+      LV.stale = true;
+      if (autoOk()) { setStatus('Nến 15m vừa đóng: đang cập nhật phân tích…', 'ok'); setTimeout(() => { if (LV.stale && autoOk() && !running) run(VIEW, true, undefined, true); }, 1500); }
+      else { setStatus('Nến 15m vừa đóng: bấm "Phân tích ngay" để cập nhật phân tích với nến mới.', 'ok'); const b = $('#an-run'); if (b) b.classList.add('pulse'); }
+    }
   }
   function liveUi() {
     const e = $('#an-live'); if (!e) return; if (!LV.on) { e.className = 'an-live'; e.innerHTML = ''; return; }
@@ -277,20 +309,21 @@
     LV.ws = ws; ws.onmessage = (m) => { try { const d = JSON.parse(m.data).data; if (d && d.k) onKline(d.k); } catch (e) { /* bỏ qua gói lỗi */ } };
     ws.onopen = () => { LV.retry = 0; if (LV.poll) { clearInterval(LV.poll); LV.poll = null; } }; ws.onclose = lost; ws.onerror = lost;
   }
-  function liveStart() { if (LV.on) return; LV.on = true; liveConnect(); LV.watch = setInterval(liveUi, 1000); document.addEventListener('visibilitychange', LV.vis = () => { if (!document.hidden) Object.keys(LV.last).forEach((k) => applyRec(k, LV.last[k])); }); }
+  function liveStart() { if (LV.on) return; LV.on = true; liveConnect(); LV.watch = setInterval(liveUi, 1000); document.addEventListener('visibilitychange', LV.vis = () => { if (!document.hidden) { Object.keys(LV.last).forEach((k) => applyRec(k, LV.last[k])); if (LV.stale && cfgGet().auto !== false && !ASOF && VIEW && !running) run(VIEW, true, undefined, true); } }); }
   function liveStop() { if (!LV.on) return; LV.on = false; const w = LV.ws; LV.ws = null; try { if (w) w.close(); } catch (e) { /* bỏ qua */ } clearInterval(LV.watch); clearInterval(LV.poll); LV.poll = null; document.removeEventListener('visibilitychange', LV.vis); LV.price = null; liveUi(); }
 
   /* ---------- chạy phân tích ---------- */
-  async function run(view, force, asOf) {
+  async function run(view, force, asOf, keep) {
     if (asOf !== undefined) ASOF = asOf;
-    if (running) return; running = true; const out = $('#an-out', view), btn = $('#an-run', view); btn.disabled = true;
+    if (running) return; running = true; let stage = 'load'; LV.stale = false; const out = $('#an-out', view), btn = $('#an-run', view); btn.disabled = true;
     try {
-      const cfg = cfgGet(); setStatus('Đang tải nến 15m, 1H, 4H…', ''); out.innerHTML = '<div class="an-wait">Đang tải dữ liệu và phân tích…</div>';
-      if (force || !RAW || RAW.sym !== SYM.id || Date.now() - RAW.at > 20000) { const raw = await loadAll(1000); if (raw.sym !== SYM.id) return; RAW = raw; }
+      const cfg = cfgGet(); setStatus('Đang tải nến 15m, 1H, 4H…', ''); if (!keep) out.innerHTML = '<div class="an-wait">Đang tải dữ liệu và phân tích…</div>';
+      if (force || !RAW || RAW.sym !== SYM.id || Date.now() - RAW.at > 20000) { let raw = null; if (RAW && RAW.sym === SYM.id) { try { raw = await refreshRaw(RAW); } catch (e) { raw = null; } } if (!raw) raw = await loadAll(1000); if (raw.sym !== SYM.id) return; RAW = raw; }
+      stage = 'an';
       const off = offOf(), T = ASOF;
       const cut = (a, ms) => (T ? a.filter((x) => x.t + ms <= T) : a);
       const F = { m15: shift(cut(T && BIG ? BIG : RAW.m15, 900000), off), h1: shift(cut(RAW.h1, 3600000), off), h4: shift(cut(RAW.h4, 14400000), off), m5: shift(cut(RAW.m5, 300000), off) };
-      LVR.forEach((c) => clearTimeout(c.timer)); LVR.length = 0; LV.off = off;
+      SNAP = keep ? snap() : null; LVR.forEach((c) => clearTimeout(c.timer)); LVR.length = 0; LV.off = off;
       const res = A.analyze(F, { mode: modeOf(), sym: SYM.id }); res.n = F.m15.length; res.m15 = F.m15; OUT = { F, res };
       let h = T ? '<div class="callout tip"><p><b>Đang xem lại quá khứ:</b> đây là đúng những gì công cụ sẽ hiển thị tại thời điểm đó (chỉ dùng nến đã đóng).</p><div class="an-btns"><button type="button" class="btn pri" id="an-back">⟲ Quay về hiện tại</button></div></div>' : '';
       h += '<p class="an-meta">Nến 15m mới nhất đóng lúc <b>' + esc(A.tm(res.now)) + '</b> · giá <b>' + f2(res.price) + '</b>' + (off ? ' (đã cộng chênh lệch ' + (off > 0 ? '+' : '') + f2(off) + ')' : '') + '</p>';
@@ -304,7 +337,10 @@
       if (T) { const bk = $('#an-back', out); if (bk) bk.onclick = () => run(view, true, null); } else btBox(view);
       setStatus('Cập nhật xong lúc ' + new Date().toLocaleTimeString('vi-VN'), 'ok');
     } catch (e) {
-      out.innerHTML = '<div class="callout warn"><p><b>Không tải được dữ liệu.</b> ' + esc(e.message || String(e)) + '. Kiểm tra kết nối mạng hoặc thử lại sau ít phút. Nguồn dữ liệu là API công khai của Binance (cặp ' + SYM.src + ').</p></div>'; setStatus('Lỗi tải dữ liệu', 'no');
+      console.error(e);
+      out.innerHTML = stage === 'load' ? '<div class="callout warn"><p><b>Không tải được dữ liệu.</b> ' + esc(e.message || String(e)) + '. Kiểm tra kết nối mạng hoặc thử lại sau ít phút. Nguồn dữ liệu là API công khai của Binance (cặp ' + SYM.src + ').</p><div class="an-btns"><button type="button" class="btn pri" id="an-retry">⟳ Thử lại</button></div></div>'
+        : '<div class="callout warn"><p><b>Có lỗi khi phân tích hoặc vẽ biểu đồ.</b> ' + esc(e.message || String(e)) + '. Dữ liệu đã tải được, bấm Thử lại; nếu lỗi lặp lại, hãy báo kèm nội dung này.</p><div class="an-btns"><button type="button" class="btn pri" id="an-retry">⟳ Thử lại</button></div></div>';
+      const rt = $('#an-retry', out); if (rt) rt.onclick = () => run(view, true); setStatus(stage === 'load' ? 'Lỗi tải dữ liệu' : 'Lỗi khi phân tích', 'no');
     } finally { running = false; btn.disabled = false; }
   }
 
@@ -342,6 +378,7 @@
       '<p class="lead">Công cụ đọc nến thật đa khung (4H → 1H → 15m), chỉ đưa ra lệnh BUY/SELL (kèm SL, TP) khi cấu trúc giá đáp ứng đủ điều kiện của mô hình ICT hoặc Price Action. Không đủ điều kiện thì nói rõ là đứng ngoài.</p>' +
       '<div class="callout warn"><p>Đây là công cụ <b>giáo dục</b>: áp dụng quy tắc cố định lên dữ liệu giá để bạn thấy cách đọc cấu trúc, không phải lời khuyên đầu tư và không biết tình hình tài chính của bạn. Giao dịch đòn bẩy có thể mất toàn bộ vốn. Luôn tự kiểm tra lại trên biểu đồ của broker trước khi vào lệnh.</p></div>' +
       '<div class="an-bar"><label>Mã <select id="an-sym">' + Object.keys(A.SYMS).map((k) => '<option value="' + k + '">' + A.SYMS[k].name + ' · ' + A.SYMS[k].label + '</option>').join('') + '</select></label><button type="button" class="btn pri" id="an-run">⟳ Phân tích ngay</button>' +
+      '<label class="an-auto" title="Khi nến 15m đóng, tự chạy lại phân tích (giữ nguyên zoom và các lớp bạn đã bật). Không chạy nếu bạn vừa thao tác trong 45 giây."><input type="checkbox" id="an-auto"> Tự cập nhật khi nến 15m đóng</label>' +
       '<label>Mô hình <select id="an-mode"><option value="both">ICT + Price Action</option><option value="ict">Chỉ ICT</option><option value="pa">Chỉ Price Action</option></select></label>' +
       '<span id="an-offbox"><label>Chênh lệch giá (cộng vào) <input id="an-off" type="number" step="0.1" value="' + (+cfg.off || 0) + '" style="width:90px"></label><button type="button" class="btn sm" id="an-spot" title="So giá PAXG với giá vàng spot (gold-api.com) rồi điền chênh lệch">Lấy theo giá spot</button></span><span id="an-st" class="an-st"></span><span id="an-live" class="an-live"></span></div>' +
       '<p class="muted" id="an-note"></p>' +
@@ -352,7 +389,8 @@
         : 'Dữ liệu: cặp ' + SYM.src + ' trên Binance, giao dịch 24/7 nên không có ngày nghỉ. Giá có thể lệch nhẹ so với sàn bạn dùng. Phiên Á/London/New York và killzone vẫn tính theo giờ New York như với vàng, nhưng thanh khoản crypto ít phụ thuộc vào các phiên này hơn nên tín hiệu có thể kém ổn định hơn vàng: hãy xem phần Kiểm chứng bên dưới trước khi tin kết quả.';
       if (SYM.bt) $('#an-note', view).textContent += ' ' + SYM.bt + ' (trên chính dữ liệu dùng để thiết kế quy tắc, mẫu nhỏ, chưa phải bằng chứng có lãi).';
     };
-    symUi();
+    symUi(); VIEW = view; $('#an-auto', view).checked = cfg.auto !== false; $('#an-auto', view).onchange = (e) => cfgSet({ auto: e.target.checked });
+    ['pointerdown', 'wheel', 'keydown', 'touchstart'].forEach((ev) => view.addEventListener(ev, () => (UI.t = Date.now()), { capture: true, passive: true }));
     $('#an-sym', view).onchange = (e) => {
       SYM = A.SYMS[e.target.value] || A.SYMS.XAUUSD; cfgSet({ sym: SYM.id }); symUi(); RAW = null; BIG = null; ASOF = null; btRun++; liveStop(); LV.last = {}; LV.price = null; LV.lastMsg = 0;
       const go = () => (running ? setTimeout(go, 250) : run(view, true)); go();

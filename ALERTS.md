@@ -43,7 +43,11 @@ Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được
 
 ## Bitcoin (BTCUSD)
 
-Trang Phân tích có ô chọn mã XAUUSD / BTCUSD (dữ liệu Binance, BTC giao dịch 24/7), và Telegram gửi cả hai mã theo mặc định (tin BTC có ghi tên mã). Lưu ý: kiểm chứng 122 ngày gần nhất cho thấy các quy tắc này **không có lãi với BTC** (ICT −12.3R, Price Action −4.8R, sau phí), trong khi vàng +10.7R. Tín hiệu BTC chỉ nên dùng để tham khảo và học. Muốn tắt tin BTC: đặt biến `SYMBOLS` = `XAUUSD`.
+Trang Phân tích có ô chọn mã XAUUSD / BTCUSD (dữ liệu Binance, BTC giao dịch 24/7), và Telegram gửi cả hai mã theo mặc định (tin BTC có ghi tên mã). Lưu ý: kiểm chứng 122 ngày gần nhất cho thấy các quy tắc này **không có lãi với BTC** (ICT −6.6R, Price Action −6.2R, sau phí), trong khi vàng +11.9R. Tín hiệu BTC chỉ nên dùng để tham khảo và học. Muốn tắt tin BTC: đặt biến `SYMBOLS` = `XAUUSD`.
+
+## Kiểm tra tự động
+
+Mỗi lần có commit, GitHub chạy `node scripts/check.js` (workflow *Check*): kiểm cú pháp mọi file JS rồi chạy lõi phân tích và kiểm chứng trên dữ liệu mẫu (`scripts/fixtures`), phát hiện lỗi như TP nằm sai phía SL. Chạy tay trên máy: `node scripts/check.js`. Làm mới dữ liệu mẫu: `node scripts/make-fixtures.js`.
 
 ## Giới hạn cần biết
 
