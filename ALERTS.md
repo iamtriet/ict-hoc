@@ -1,6 +1,6 @@
 # Thông báo Telegram khi có setup XAUUSD
 
-GitHub Actions quét thị trường 15 phút một lần (06:00–21:59 UTC, thứ Hai–thứ Sáu), dùng đúng lõi phân tích của trang web
+GitHub Actions quét thị trường 15 phút một lần (cả ngày thứ Hai–thứ Sáu, thêm 22:00–23:59 UTC Chủ nhật lúc vàng mở cửa lại), dùng đúng lõi phân tích của trang web
 (`assets/analyst-core.js`). Chỉ khi có setup đạt điều kiện và điểm ≥ 60, bot gửi cho bạn một ảnh biểu đồ 15m kèm
 Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được gửi một lần. Không có setup thì bot im lặng.
 
@@ -36,5 +36,5 @@ Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được
 
 - GitHub không chạy đúng từng phút: lịch có thể trễ vài phút đến vài chục phút lúc cao điểm. Setup chờ lệnh limit thường còn hiệu lực nhiều giờ nên ít ảnh hưởng, còn tín hiệu Price Action (vào khi nến xác nhận đóng) có thể đến muộn một nhịp: nếu giá đã chạy quá 0.5R, đừng đuổi.
 - Dữ liệu là PAXG (token vàng) từ Binance, nếu không truy cập được sẽ chuyển sang Kraken. Giá được quy đổi gần đúng về spot, nên luôn đối chiếu với biểu đồ broker.
-- Tốn khoảng 1.400 phút Actions mỗi tháng (gói miễn phí cho kho riêng tư là 2.000). Muốn tắt: *Actions → XAUUSD alerts → ⋯ → Disable workflow*.
+- Lịch quét 24 giờ cần repo ở chế độ **public** (Actions không giới hạn phút); với repo riêng tư sẽ vượt 2.000 phút miễn phí mỗi tháng. Repo public cũng bị GitHub tự tắt lịch sau 60 ngày không có commit nào: khi đó vào tab Actions bấm bật lại. Muốn tắt: *Actions → XAUUSD alerts → ⋯ → Disable workflow*.
 - Nội dung chỉ mang tính giáo dục, không phải lời khuyên đầu tư.
