@@ -209,3 +209,18 @@ abbr.ab:hover, abbr.ab:focus-visible { border-bottom-color: var(--accent); color
 .an-warn { color: var(--warn); font-size: 13.5px; }
 .an-bt-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 10px 0; } .an-eq { width: 100%; height: 90px; background: var(--tint); border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; }
 .an-card details summary { cursor: pointer; }
+
+/* ảnh phân tích 2x2 kiểu TradingView */
+.an-imgs.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .an-imgs figure.tvx { background: var(--tvbg); }
+.an-imgs figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .an-imgs figcaption .tvsw { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; } .an-imgs figcaption .tvsw button { background: none; border: 0; color: var(--mute); padding: 1px 9px; font: 600 11px var(--ui); cursor: pointer; } .an-imgs figcaption .tvsw button.on { background: var(--accent-bg); color: var(--accent-ink); }
+.an-imgs .tvbox { min-height: 0; margin: 0; border: 0; border-radius: 0; } .an-tvn { font-size: 11.5px; color: var(--faint); padding: 3px 12px 6px; }
+.tvl { --tvbg: #131722; --tvgrid: #2a2e39; --tvup: #26a69a; --tvdn: #ef5350; --tvtx: #787b86; background: var(--tvbg); }
+:root[data-theme="light"] .tvl, :root:not([data-theme="dark"]) .tvl { --tvbg: #ffffff; --tvgrid: #e0e3eb; --tvtx: #787b86; }
+:root[data-theme="dark"] .tvl { --tvbg: #131722; --tvgrid: #2a2e39; }
+.tvl .gr { stroke: var(--tvgrid); opacity: 1; } .tvl .ax { fill: var(--tvtx); } .tvl .bt { fill: var(--tvtx); }
+.tvl .cu line { stroke: var(--tvup); } .tvl .cu rect { fill: var(--tvup); } .tvl .cd line { stroke: var(--tvdn); } .tvl .cd rect { fill: var(--tvdn); }
+.tvl .ch-bar { padding-top: 4px; } .tvl .ch-info { color: var(--tvtx); } .tvl .ch-info b { color: var(--fg); } .tvl .tx.hl, .tvl .sw.hl { stroke: var(--tvbg); } .tvl .a .pl { fill: var(--tvbg); }
+.pbx.tp { fill: var(--bull); fill-opacity: .1; } .pbx.sl { fill: var(--bear); fill-opacity: .13; }
+.ax.ps-t { paint-order: stroke; stroke: var(--tvbg, var(--panel)); stroke-width: 3px; stroke-linejoin: round; font-weight: 700; }
+.ptag.peg { fill: var(--info); } .ptag.pslg { fill: var(--bear); } .ptag.ptpg { fill: var(--bull); } .ptx { fill: #fff; font: 700 10px var(--mono); }
+@media (max-width: 900px) { .an-imgs.g2 { grid-template-columns: 1fr; } }

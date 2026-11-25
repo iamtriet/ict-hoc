@@ -73,6 +73,7 @@
     tv($('#tvn', view), 'timeline', { feedMode: 'symbol', symbol: 'OANDA:XAUUSD', colorTheme: th, isTransparent: false, displayMode: 'regular', width: '100%', height: '420', locale: 'vi_VN' }, 'https://www.tradingview.com/symbols/XAUUSD/news/');
   };
 
+  ICT.tvEmbed = tv;
   ICT.livePage = function (view) {
     view.innerHTML = '<div class="page wide"><div class="crumb">Thực hành</div><h1>Biểu đồ XAUUSD trực tiếp</h1><p class="lead">Biểu đồ thật của vàng (múi giờ New York) để áp dụng những gì đã học: đánh dấu swing, thanh khoản, FVG, OB trên nến thật. Widget của TradingView; cần internet.</p><div class="tvbox" id="tvc" style="min-height:540px"></div><div class="callout tip"><p>Quy trình gợi ý: (1) khung 4H/1H đánh dấu cấu trúc và thanh khoản; (2) khung 15m/5m tìm quét + MSS trong killzone; (3) ghi lại bạn <b>sẽ</b> làm gì, rồi xem giá chạy tiếp. Để luyện từng nến trên dữ liệu thật, dùng ' + A('https://www.tradingview.com/support/solutions/43000712747-bar-replay-how-and-why-to-test-a-strategy-in-the-past/', 'Bar Replay của TradingView') + ', hoặc xuất dữ liệu rồi nạp vào <a href="#replay">Replay Lab</a> (mục "Dữ liệu thật của bạn").</p></div></div>';
     tv($('#tvc', view), 'advanced-chart', { autosize: false, width: '100%', height: '520', symbol: 'OANDA:XAUUSD', interval: '15', timezone: 'America/New_York', theme: theme(), style: '1', locale: 'vi_VN', allow_symbol_change: false, withdateranges: true, hide_side_toolbar: false, save_image: true, support_host: 'https://www.tradingview.com' }, 'https://www.tradingview.com/chart/?symbol=OANDA%3AXAUUSD');

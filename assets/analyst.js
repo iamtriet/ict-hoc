@@ -25,8 +25,8 @@
   const closed = (a) => a.slice(0, -1); // nến cuối cùng luôn là nến đang chạy
   const shift = (a, off) => (off ? a.map((x) => ({ t: x.t, o: x.o + off, h: x.h + off, l: x.l + off, c: x.c + off })) : a);
   async function loadAll(n15) {
-    const [m15, h1, h4] = await Promise.all([klines('15m', n15 || 1000), klines('1h', 1000), klines('4h', 500)]);
-    return { m15: closed(m15), h1: closed(h1), h4: closed(h4), at: Date.now() };
+    const [m15, h1, h4, m5] = await Promise.all([klines('15m', n15 || 1000), klines('1h', 1000), klines('4h', 500), klines('5m', 1000)]);
+    return { m15: closed(m15), h1: closed(h1), h4: closed(h4), m5: closed(m5), at: Date.now() };
   }
 
   /* ---------- biểu đồ ---------- */
@@ -40,52 +40,67 @@
   const ixAt = (rows, t) => { let k = 0; for (let i = 0; i < rows.length; i++) { if (rows[i].t <= t) k = i; else break; } return k; };
   function put(host, S, ann, o) {
     S.ann = ann;
-    return ICT.Chart(host, S, Object.assign({ layers: ['ann', 'struct', 'fvg'], avail: ['ann', 'swing', 'struct', 'fvg', 'ob', 'liq', 'kz'], h: 330, slotMin: 5 }, o || {}));
+    return ICT.Chart(host, S, Object.assign({ layers: ['ann'], avail: ['ann', 'swing', 'struct', 'fvg', 'ob', 'liq', 'kz'], h: 330, slotMin: 5 }, o || {}));
   }
+  const TFS = { h4: ['4H', '240', 'bias và dealing range'], h1: ['1H', '60', 'cấu trúc và vùng vào'], m15: ['15m', '15', 'kích hoạt và kế hoạch lệnh'], m5: ['5m', '5', 'điểm vào chi tiết'] };
+  const extIx = (rows, t0, t1, low) => { let k = -1, v = low ? 1e18 : -1e18; rows.forEach((r, i) => { if (r.t >= t0 && r.t < t1 && (low ? r.l < v : r.h > v)) { v = low ? r.l : r.h; k = i; } }); return k < 0 ? ixAt(rows, t0) : k; };
   function charts(el, F, res, s) {
-    const B = res.bias, m15 = F.m15, h1 = F.h1, h4 = F.h4;
-    const hosts = { h4: $('[data-ch=h4]', el), h1: $('[data-ch=h1]', el), m15: $('[data-ch=m15]', el) };
-    // 15m
-    const n15 = m15.length; let a = n15 - 150; if (s) a = Math.max(0, Math.min(s.sweep ? s.sweep.i : s.mss.i, s.ready, s.mss.i) - 24);
-    a = Math.max(0, Math.min(a, n15 - 60)); const r15 = m15.slice(a), S15 = mkS(r15, 'XAUUSD 15m'), U15 = (p) => (p - S15.base) / S15.pip, I15 = (i) => i - a;
-    const ann15 = [];
-    if (s) {
-      const buy = s.dir === 'BUY', cb = buy ? 'bull' : 'bear', cx = buy ? 'bear' : 'bull';
+    const B = res.bias, m15 = F.m15, h1 = F.h1, h4 = F.h4, m5 = F.m5 || [];
+    const hosts = {}; Object.keys(TFS).forEach((k) => (hosts[k] = $('[data-ch=' + k + ']', el)));
+    const buy = !!s && s.dir === 'BUY', cb = buy ? 'bull' : 'bear';
+    const mkPos = (rows, U) => (s ? { i: ixAt(rows, m15[s.ready].t), dir: buy ? 1 : -1, entry: U(s.entry), sl: U(s.sl), tp1: U(s.tp1), tp2: U(s.tp2), rr1: s.rr1, rr2: s.rr2 } : null);
+    const zoneAnn = (rows, U, txt) => {
+      if (!s) return [];
+      if (s.zone) return [{ t: 'zone', x1: ixAt(rows, m15[s.zone.x1].t), x2: 'end', y1: U(s.zone.top), y2: U(s.zone.bot), text: txt || s.zone.type, c: cb, op: 0.22, ce: true }];
+      return [{ t: 'hline', y: U(s.level), x1: Math.max(0, ixAt(rows, m15[s.mss.from].t)), x2: 'end', text: 'Mức bị phá → retest', c: 'info', below: !buy }];
+    };
+    // quét thanh khoản, MSS/BOS, nến từ chối: đặt theo thời gian của nến 15m (khung 5m lấy nến 5m có cực trị trong nến 15m đó)
+    const marks = (rows, U, fine) => {
+      const out = [], t15 = (i) => m15[i].t, ix = (i, low) => (fine ? extIx(rows, t15(i), t15(i) + 900000, low) : ixAt(rows, t15(i)));
       if (s.model === 'ICT') {
-        ann15.push({ t: 'zone', x1: I15(s.zone.x1), x2: 'end', y1: U15(s.zone.top), y2: U15(s.zone.bot), text: s.zone.type, c: cb, op: 0.22, ce: true });
-        ann15.push({ t: 'label', at: I15(s.sweep.i), text: 'Quét ' + (buy ? 'SSL' : 'BSL'), c: 'warn', pos: buy ? 'below' : 'above', lift: 4 });
-        ann15.push({ t: 'hline', y: U15(s.sweep.p), x1: Math.max(0, I15(s.sweep.i) - 18), x2: I15(s.sweep.i) + 6, text: s.sweep.name, c: 'warn', below: buy });
-        ann15.push({ t: 'label', at: I15(s.mss.i), text: s.mss.k + (buy ? ' ▲' : ' ▼'), c: cb, pos: buy ? 'above' : 'below', lift: 2 });
-      } else {
-        ann15.push({ t: 'hline', y: U15(s.level), x1: Math.max(0, I15(s.mss.from)), x2: 'end', text: 'Mức bị phá → retest', c: 'info', below: !buy });
-        ann15.push({ t: 'label', at: I15(s.mss.i), text: s.mss.k + (buy ? ' ▲' : ' ▼'), c: cb, pos: buy ? 'above' : 'below', lift: 2 });
-        ann15.push({ t: 'label', at: I15(s.rej.i), text: s.rej.kind, c: 'warn', pos: buy ? 'below' : 'above', lift: 4 });
-      }
-      ann15.push({ t: 'hline', y: U15(s.tp1), x1: I15(s.ready), x2: 'end', text: 'TP1 ' + f2(s.tp1), c: 'bull', below: false });
-    }
-    const pos15 = s ? { i: I15(s.ready), dir: s.dir === 'BUY' ? 1 : -1, entry: U15(s.entry), sl: U15(s.sl), tp: U15(s.tp2) } : null;
-    put(hosts.m15, S15, ann15, { pos: pos15, range: [0, r15.length], pad: 16, h: 370 });
+        const i = ix(s.sweep.i, buy);
+        out.push({ t: 'label', at: i, text: 'Quét ' + (buy ? 'SSL' : 'BSL'), c: 'warn', pos: buy ? 'below' : 'above', lift: 4 });
+        out.push({ t: 'hline', y: U(s.sweep.p), x1: Math.max(0, i - 18), x2: i + 6, text: s.sweep.name, c: 'warn', below: buy });
+      } else out.push({ t: 'label', at: ix(s.rej.i, buy), text: s.rej.kind, c: 'warn', pos: buy ? 'below' : 'above', lift: 4 });
+      out.push({ t: 'label', at: ix(s.mss.i, !buy), text: s.mss.k + (buy ? ' ▲' : ' ▼'), c: cb, pos: buy ? 'above' : 'below', lift: 2 });
+      return out;
+    };
+    const build = (rows, key, anns, extra) => {
+      const S = mkS(rows, 'XAUUSD ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip;
+      put(hosts[key], S, anns(U), Object.assign({ pos: mkPos(rows, U), range: [0, rows.length], h: 320, slotMin: 3, frames: false, noTg: true }, extra || {}));
+    };
+    // 15m
+    const n15 = m15.length; let a = n15 - 110; if (s) a = Math.max(0, Math.min(s.sweep ? s.sweep.i : s.mss.i, s.ready, s.mss.i, s.zone ? s.zone.x1 : 1e9) - 24);
+    a = Math.max(0, n15 - 160, Math.min(a, n15 - 60));
+    const r15 = m15.slice(a);
+    build(r15, 'm15', (U) => (s ? zoneAnn(r15, U).concat(marks(r15, U, false)) : []), { pad: 14 });
+    // 5m: bắt đầu trước điểm quét / MSS một chút, tối đa 200 nến
+    let t5 = m15[a].t; if (s) t5 = Math.max(t5, m15[Math.min(s.sweep ? s.sweep.i : s.mss.i, s.mss.i, s.zone ? s.zone.x1 : 1e9)].t - 6 * 900000);
+    const r5 = m5.filter((x) => x.t >= t5).slice(-200);
+    if (r5.length >= 25) build(r5, 'm5', (U) => (s ? zoneAnn(r5, U).concat(marks(r5, U, true)) : []), { pad: 14 });
+    else hosts.m5.innerHTML = '<div class="an-tvn">Chưa đủ nến 5m để vẽ.</div>';
     // 1H
-    const r1 = h1.slice(-110), S1 = mkS(r1, 'XAUUSD 1H'), U1 = (p) => (p - S1.base) / S1.pip, ann1 = [];
-    const iNow1 = r1.length - 1;
-    ann1.push({ t: 'label', at: iNow1, text: 'Bias: ' + (B.dir > 0 ? 'TĂNG' : B.dir < 0 ? 'GIẢM' : 'chưa rõ'), c: B.dir > 0 ? 'bull' : B.dir < 0 ? 'bear' : 'note', pos: 'above', lift: 6 });
-    if (s) {
-      const buy = s.dir === 'BUY';
-      const zt = s.zone ? s.zone.top : Math.max(s.entry, s.level), zb = s.zone ? s.zone.bot : Math.min(s.entry, s.level);
-      ann1.push({ t: 'zone', x1: Math.max(0, ixAt(r1, m15[s.ready].t)), x2: 'end', y1: U1(zt), y2: U1(zb), text: s.model === 'ICT' ? 'Vùng vào 15m' : 'Vùng retest', c: buy ? 'bull' : 'bear', op: 0.25 });
-      ann1.push({ t: 'hline', y: U1(s.sl), x1: Math.max(0, ixAt(r1, m15[s.ready].t) - 2), x2: 'end', text: 'SL ' + f2(s.sl), c: 'bear', below: buy });
-      ann1.push({ t: 'hline', y: U1(s.tp1), x1: Math.max(0, ixAt(r1, m15[s.ready].t) - 2), x2: 'end', text: 'TP1 ' + f2(s.tp1), c: 'bull' });
-    }
-    put(hosts.h1, S1, ann1, { range: [0, r1.length], pad: 12 });
+    const r1 = h1.slice(-110);
+    build(r1, 'h1', (U) => [{ t: 'label', at: r1.length - 1, text: 'Bias: ' + (B.dir > 0 ? 'TĂNG' : B.dir < 0 ? 'GIẢM' : 'chưa rõ'), c: B.dir > 0 ? 'bull' : B.dir < 0 ? 'bear' : 'note', pos: 'above', lift: 6 }].concat(s ? zoneAnn(r1, U, s.model === 'ICT' ? 'Vùng vào 15m' : 'Vùng retest') : []), { pad: 12 });
     // 4H
-    const r4 = h4.slice(-90), S4 = mkS(r4, 'XAUUSD 4H'), U4 = (p) => (p - S4.base) / S4.pip, ann4 = [], R = B.range;
-    ann4.push({ t: 'hline', y: U4(R.hi), x1: 0, x2: 'end', text: 'Đỉnh range 4H ' + f2(R.hi), c: 'warn' });
-    ann4.push({ t: 'hline', y: U4(R.lo), x1: 0, x2: 'end', text: 'Đáy range 4H ' + f2(R.lo), c: 'warn', below: true });
-    ann4.push({ t: 'hline', y: U4(R.eq), x1: 0, x2: 'end', text: 'EQ 50%', c: 'mute' });
-    ann4.push({ t: 'label', at: r4.length - 1, text: 'Giá ' + f2(res.price), c: 'info', pos: 'above', lift: 6 });
-    if (s) { ann4.push({ t: 'hline', y: U4(s.tp2), x1: r4.length - 12, x2: 'end', text: 'TP2 ' + f2(s.tp2), c: 'bull' }); ann4.push({ t: 'hline', y: U4(s.entry), x1: r4.length - 12, x2: 'end', text: 'Entry ' + f2(s.entry), c: 'info', below: true }); }
-    put(hosts.h4, S4, ann4, { range: [0, r4.length], pad: 10 });
+    const r4 = h4.slice(-90), R = B.range;
+    build(r4, 'h4', (U) => [{ t: 'hline', y: U(R.hi), x1: 0, x2: 'end', text: 'Đỉnh range 4H ' + f2(R.hi), c: 'warn' }, { t: 'hline', y: U(R.lo), x1: 0, x2: 'end', text: 'Đáy range 4H ' + f2(R.lo), c: 'warn', below: true }, { t: 'hline', y: U(R.eq), x1: 0, x2: 'end', text: 'EQ 50%', c: 'mute' }, { t: 'label', at: r4.length - 1, text: 'Giá ' + f2(res.price), c: 'info', pos: 'above', lift: 6 }], { pad: 10 });
   }
+
+  /* chuyển từng ô giữa biểu đồ phân tích và widget TradingView thật */
+  function tvSwitch(fig, key, on) {
+    const host = $('[data-ch=' + key + ']', fig); let box = $('.tvbox', fig), note = $('.an-tvn.tvn', fig);
+    [].forEach.call(fig.querySelectorAll('.tvsw button'), (b) => b.classList.toggle('on', (b.dataset.v === 'tv') === on));
+    host.style.display = on ? 'none' : '';
+    if (!on) { if (box) box.style.display = 'none'; if (note) note.style.display = 'none'; return; }
+    if (!box) {
+      box = document.createElement('div'); box.className = 'tvbox'; box.style.minHeight = '330px'; fig.appendChild(box);
+      ICT.tvEmbed(box, 'advanced-chart', { autosize: false, width: '100%', height: '330', symbol: 'OANDA:XAUUSD', interval: TFS[key][1], timezone: 'America/New_York', theme: document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'), style: '1', locale: 'vi_VN', allow_symbol_change: false, hide_side_toolbar: false, save_image: true, support_host: 'https://www.tradingview.com' }, 'https://www.tradingview.com/chart/?symbol=OANDA%3AXAUUSD');
+      note = document.createElement('div'); note.className = 'an-tvn tvn'; note.textContent = 'Widget TradingView không cho trang web vẽ thêm lên biểu đồ, nên Entry/SL/TP và các chú thích nằm ở tab "Phân tích". Muốn xem trên TradingView thì tự đặt các mức đó bằng công cụ vẽ của nó.'; fig.appendChild(note);
+    }
+    box.style.display = ''; if (note) note.style.display = '';
+  }
+  const figs = (cap) => '<div class="an-imgs g2">' + ['h4', 'h1', 'm15', 'm5'].map((k) => '<figure data-f="' + k + '"><figcaption><span>' + TFS[k][0] + ' · ' + ((cap && cap[k]) || TFS[k][2]) + '</span><span class="tvsw"><button type="button" class="on" data-v="an">Phân tích</button><button type="button" data-v="tv">TradingView</button></span></figcaption><div data-ch="' + k + '" class="tvl"></div></figure>').join('') + '</div>';
 
   /* ---------- xuất ảnh PNG ---------- */
   async function svgImg(svg) {
@@ -101,8 +116,7 @@
   const plain = (h) => String(h).replace(/<[^>]+>/g, '');
   async function exportPng(card, s, res) {
     const cs = getComputedStyle(document.body), bg = cs.backgroundColor || '#0c1016', fg = cs.color || '#eee', W = 1200, pad = 24, sc = 2;
-    const imgs = []; for (const k of ['h4', 'h1', 'm15']) { const svg = $('[data-ch=' + k + '] svg', card); if (svg) imgs.push(await svgImg(svg)); }
-    const title = ['4H — bias và dealing range', '1H — cấu trúc và vùng vào', '15m — kích hoạt và kế hoạch lệnh'];
+    const keys = ['h4', 'h1', 'm15', 'm5'], imgs = []; for (const k of keys) { const svg = $('[data-ch=' + k + '] svg', card); imgs.push(svg ? Object.assign(await svgImg(svg), { bg: getComputedStyle($('[data-ch=' + k + ']', card)).backgroundColor }) : null); }
     const cv = document.createElement('canvas'); cv.width = W * sc; cv.height = 6000 * sc; const ctx = cv.getContext('2d'); ctx.scale(sc, sc);
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, 6000); ctx.fillStyle = fg; ctx.textBaseline = 'alphabetic';
     let y = pad + 18; ctx.font = 'bold 22px Arial'; ctx.fillText('XAUUSD · ' + (s ? s.dir + ' · ' + s.title : 'Phân tích đa khung'), pad, y); y += 24;
@@ -111,7 +125,13 @@
       const cells = [['Entry', f2(s.entry)], ['SL', f2(s.sl)], ['TP1', f2(s.tp1) + ' (1:' + s.rr1 + ')'], ['TP2', f2(s.tp2) + ' (1:' + s.rr2 + ')'], ['Rủi ro/oz', '$' + f2(s.risk)], ['Điểm', s.score + '/100 · ' + s.grade]];
       const cw = (W - pad * 2) / cells.length; cells.forEach((c, i) => { ctx.font = '12px Arial'; ctx.globalAlpha = 0.65; ctx.fillText(c[0], pad + i * cw, y); ctx.globalAlpha = 1; ctx.font = 'bold 17px Arial'; ctx.fillStyle = i === 1 ? '#e5484d' : i === 2 || i === 3 ? '#30a46c' : fg; ctx.fillText(c[1], pad + i * cw, y + 20); ctx.fillStyle = fg; }); y += 44;
     }
-    imgs.forEach((o, i) => { ctx.font = 'bold 14px Arial'; ctx.fillText(title[i + (imgs.length < 3 ? 3 - imgs.length : 0)] || '', pad, y + 4); y += 12; const w = Math.min(W - pad * 2, o.w), h = (o.h * w) / o.w; ctx.drawImage(o.img, pad, y, w, h); y += h + 14; });
+    const gap = 12, cw2 = (W - pad * 2 - gap) / 2;
+    for (let r = 0; r < 2; r++) {
+      let rowH = 0; const cells = [imgs[r * 2], imgs[r * 2 + 1]]; cells.forEach((o) => { if (o) rowH = Math.max(rowH, (o.h * cw2) / o.w); });
+      cells.forEach((o, c) => { const k = keys[r * 2 + c], x = pad + c * (cw2 + gap); ctx.font = 'bold 13px Arial'; ctx.fillStyle = fg; ctx.fillText(TFS[k][0] + ' · ' + TFS[k][2], x, y + 4); if (o) { const h = (o.h * cw2) / o.w; ctx.fillStyle = o.bg; ctx.fillRect(x, y + 10, cw2, h); ctx.drawImage(o.img, x, y + 10, cw2, h); } });
+      y += rowH + 28;
+    }
+    ctx.fillStyle = fg;
     ctx.font = '13px Arial';
     if (s) { s.story.forEach((t) => { y = wrap(ctx, plain(t), pad, y + 4, W - pad * 2, 18); }); y += 6; ctx.font = 'bold 13px Arial'; ctx.fillText('Vô hiệu khi:', pad, y + 4); ctx.font = '13px Arial'; y += 6; s.invalid.forEach((t) => { y = wrap(ctx, '• ' + t, pad, y + 14, W - pad * 2, 18); }); }
     ctx.globalAlpha = 0.6; ctx.font = '12px Arial'; y = wrap(ctx, 'Kênh Học ICT — nội dung giáo dục từ dữ liệu PAXG/USDT, không phải lời khuyên đầu tư. Giao dịch có rủi ro mất vốn.', pad, y + 20, W - pad * 2, 16); ctx.globalAlpha = 1;
@@ -141,7 +161,7 @@
       '<div class="an-h"><span class="an-dir ' + (s.dir === 'BUY' ? 'b' : 's') + '">' + (s.dir === 'BUY' ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(s.title) + '</h2>' + chip('Điểm ' + s.score + ' · ' + s.grade, s.grade === 'A+' ? 'ok' : '') + chip(now[0], now[1]) + '</div>' +
       '<div class="an-trade"><div><i>Entry</i><b>' + f2(s.entry) + '</b></div><div><i>Stop loss</i><b class="no">' + f2(s.sl) + '</b></div><div><i>TP1 · 1:' + s.rr1 + '</i><b class="ok">' + f2(s.tp1) + '</b></div><div><i>TP2 · 1:' + s.rr2 + '</i><b class="ok">' + f2(s.tp2) + '</b></div><div><i>Rủi ro</i><b>$' + f2(s.risk) + '/oz</b></div></div>' +
       '<p class="an-tpn">TP1: ' + esc(s.tp1n) + '. TP2: ' + esc(s.tp2n) + '.</p>' +
-      '<div class="an-imgs"><figure><figcaption>4H · bias và dealing range</figcaption><div data-ch="h4"></div></figure><figure><figcaption>1H · cấu trúc và vùng vào</figcaption><div data-ch="h1"></div></figure><figure><figcaption>15m · kích hoạt và kế hoạch lệnh</figcaption><div data-ch="m15"></div></figure></div>' +
+      figs() +
       '<div class="an-btns"><button type="button" class="btn pri" data-a="png">⬇ Lưu ảnh phân tích (PNG)</button><button type="button" class="btn" data-a="copy">⧉ Sao chép kế hoạch</button></div>' +
       '<h3>Phân tích phản ứng giá</h3><ol class="an-story">' + s.story.map((t) => '<li>' + t + '</li>').join('') + '</ol>' +
       '<h3>Điều kiện đã đáp ứng</h3><div class="an-ck">' + s.checks.map((c) => '<div class="' + (c.ok ? 'y' : 'n') + '"><b>' + (c.ok ? '✔' : '✖') + ' ' + esc(c.label) + '</b><span>' + esc(c.detail) + '</span></div>').join('') + '</div>' +
@@ -150,7 +170,7 @@
   function emptyHtml(res) {
     const why = res.notes.filter(Boolean).concat(res.watch).map((t) => '<li>' + esc(t) + '</li>').join('');
     return '<section class="an-card an-none" data-k="none"><div class="an-h"><h2>Chưa có setup đủ điều kiện</h2>' + chip('Đứng ngoài', 'info') + '</div><p>Công cụ chỉ đưa ra lệnh khi cả bias HTF lẫn cấu trúc 15m đều đáp ứng điều kiện của một mô hình. Hiện tại thì chưa, nên không có lệnh BUY/SELL nào được gợi ý. Đứng ngoài cũng là một quyết định giao dịch.</p>' + (why ? '<ul>' + why + '</ul>' : '') +
-      '<div class="an-imgs"><figure><figcaption>4H · bias và dealing range</figcaption><div data-ch="h4"></div></figure><figure><figcaption>1H · cấu trúc</figcaption><div data-ch="h1"></div></figure><figure><figcaption>15m · diễn biến gần nhất</figcaption><div data-ch="m15"></div></figure></div>' +
+      figs({ h1: "cấu trúc", m15: "diễn biến gần nhất" }) +
       '<div class="an-btns"><button type="button" class="btn" data-a="png">⬇ Lưu ảnh phân tích (PNG)</button></div></section>';
   }
   function recentHtml(res) {
@@ -178,7 +198,7 @@
       if (force || !RAW || Date.now() - RAW.at > 60000) RAW = await loadAll(1000);
       const off = +cfg.off || 0, T = ASOF;
       const cut = (a, ms) => (T ? a.filter((x) => x.t + ms <= T) : a);
-      const F = { m15: shift(cut(T && BIG ? BIG : RAW.m15, 900000), off), h1: shift(cut(RAW.h1, 3600000), off), h4: shift(cut(RAW.h4, 14400000), off) };
+      const F = { m15: shift(cut(T && BIG ? BIG : RAW.m15, 900000), off), h1: shift(cut(RAW.h1, 3600000), off), h4: shift(cut(RAW.h4, 14400000), off), m5: shift(cut(RAW.m5, 300000), off) };
       const res = A.analyze(F, { mode: cfg.mode || 'both' }); res.n = F.m15.length; res.m15 = F.m15; OUT = { F, res };
       let h = T ? '<div class="callout tip"><p><b>Đang xem lại quá khứ:</b> đây là đúng những gì công cụ sẽ hiển thị tại thời điểm đó (chỉ dùng nến đã đóng).</p><div class="an-btns"><button type="button" class="btn pri" id="an-back">⟲ Quay về hiện tại</button></div></div>' : '';
       h += '<p class="an-meta">Nến 15m mới nhất đóng lúc <b>' + esc(A.tm(res.now)) + '</b> · giá <b>' + f2(res.price) + '</b>' + (off ? ' (đã cộng chênh lệch ' + (off > 0 ? '+' : '') + f2(off) + ')' : '') + '</p>';
@@ -242,6 +262,7 @@
     };
     view.addEventListener('click', (e) => {
       const ao = e.target.closest('button[data-asof]'); if (ao) { window.scrollTo({ top: 0, behavior: 'smooth' }); run(view, true, +ao.dataset.asof); return; }
+      const sw = e.target.closest('.tvsw button'); if (sw) { const fg = sw.closest('figure'); tvSwitch(fg, fg.dataset.f, sw.dataset.v === 'tv'); return; }
       const b = e.target.closest('button[data-a]'); if (!b || !OUT) return; const card = b.closest('.an-card'), k = card.dataset.k, s = k === 'none' ? null : OUT.res.setups[+k];
       if (b.dataset.a === 'png') { b.disabled = true; exportPng(card, s, OUT.res).catch((er) => alert('Không xuất được ảnh: ' + er.message)).finally(() => (b.disabled = false)); }
       else if (b.dataset.a === 'copy') { const t = planText(s, OUT.res); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).catch(() => { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (er) { /* bỏ qua */ } ta.remove(); }).finally(() => { const o = b.textContent; b.textContent = '✔ Đã sao chép'; setTimeout(() => (b.textContent = o), 1600); }); }

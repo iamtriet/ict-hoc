@@ -233,7 +233,7 @@
       let hi = -1e9, lo = 1e9;
       for (let i = x0; i < i1; i++) { hi = Math.max(hi, S.bars[i].h); lo = Math.min(lo, S.bars[i].l); }
       if (i1 <= x0) { hi = S.bars[0].h; lo = S.bars[0].l; }
-      if (o.pos) [o.pos.sl, o.pos.tp, o.pos.entry].forEach((p) => { hi = Math.max(hi, p); lo = Math.min(lo, p); });
+      if (o.pos) [o.pos.sl, o.pos.tp, o.pos.tp1, o.pos.tp2, o.pos.entry].forEach((p) => { if (p != null) { hi = Math.max(hi, p); lo = Math.min(lo, p); } });
       const span = Math.max(hi - lo, S.vol * 8), mid = (hi + lo) / 2; hi = mid + span * 0.6; lo = mid - span * 0.6; // chừa chỗ cho nhãn
       const px = (i) => m.l + (i - x0 + 0.5) * slot, py = (p) => m.t + ((hi - p) / (hi - lo)) * plotH;
       const D = L.size ? ICT.detect(S, i1) : null;
@@ -416,8 +416,14 @@
         else s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl" x="' + (r.x1 + 2) + '" y="' + (r.y2 - 3) + '">' + esc(q.text) + '</text></g>';
       });
       if (o.pos) {
-        const p = o.pos, xa = px(p.i), mk = (y, cls, t) => '<line class="ps ' + cls + '" x1="' + xa + '" x2="' + right + '" y1="' + py(y) + '" y2="' + py(y) + '"/><text class="ax ' + cls + 't" x="' + (right - 4) + '" y="' + (py(y) - 3) + '" text-anchor="end">' + t + '</text>';
-        s += mk(p.entry, 'pe', (p.dir === 1 ? 'BUY ' : 'SELL ') + S.fmt(p.entry)) + mk(p.sl, 'psl', 'SL') + mk(p.tp, 'ptp', 'TP');
+        const p = o.pos, xa = Math.min(px(p.i), right - 30), full = p.tp2 != null, tpTop = full ? p.tp2 : p.tp;
+        const rect = (ya, yb, cls) => '<rect class="pbx ' + cls + '" x="' + xa + '" y="' + Math.min(py(ya), py(yb)) + '" width="' + (right - xa) + '" height="' + Math.abs(py(ya) - py(yb)) + '"/>';
+        const mk = (y, cls, t, price) => { const yy = py(y); return '<line class="ps ' + cls + '" x1="' + xa + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax ps-t ' + cls + 't" x="' + (right - 4) + '" y="' + (yy - 3) + '" text-anchor="end">' + t + '</text><rect class="ptag ' + cls + 'g" x="' + (right + 1) + '" y="' + (yy - 7) + '" width="' + (m.r - 3) + '" height="14" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5) + '" text-anchor="middle">' + S.fmt(price) + '</text>'; };
+        s += rect(p.entry, tpTop, 'tp') + rect(p.entry, p.sl, 'sl');
+        s += mk(p.sl, 'psl', 'SL' + (p.rrSl ? ' ' + p.rrSl : ''), p.sl);
+        if (full) s += mk(p.tp2, 'ptp', 'TP2' + (p.rr2 ? ' · 1:' + p.rr2 : ''), p.tp2) + mk(p.tp1, 'ptp', 'TP1' + (p.rr1 ? ' · 1:' + p.rr1 : ''), p.tp1);
+        else s += mk(p.tp, 'ptp', 'TP', p.tp);
+        s += mk(p.entry, 'pe', (p.dir === 1 ? 'BUY ' : 'SELL ') + S.fmt(p.entry), p.entry);
       }
       (o.trades || []).forEach((t) => { if (t.i1 < x0) return; s += '<line class="trd ' + (t.R >= 0 ? 'w' : 'l') + '" x1="' + px(Math.max(t.i0, x0)) + '" y1="' + py(t.entry) + '" x2="' + px(t.i1) + '" y2="' + py(t.exit) + '"/><circle class="trd-dot ' + (t.R >= 0 ? 'w' : 'l') + '" cx="' + px(t.i1) + '" cy="' + py(t.exit) + '" r="3.5"/>'; });
       s += '<g class="xh" style="display:none"><line class="xl" y1="' + m.t + '" y2="' + (H - m.b) + '"/></g>';
