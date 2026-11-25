@@ -32,7 +32,7 @@
   /* ---------- biểu đồ ---------- */
   let seq = 0;
   function mkS(rows, title) {
-    const S = ICT.defRaw('an' + (++seq), rows, { sym: 'XAUUSD', title }); S.title = title;
+    const S = ICT.defRaw('an' + (++seq), rows, { sym: 'XAUUSD', title, max: rows.length }); S.title = title;
     S.label = (i) => { const m = S.mins[i]; return S.tf < 1440 && m >= S.tf ? p2(Math.floor(m / 60)) + ':' + p2(m % 60) : S.dates[i]; };
     return S;
   }
@@ -40,7 +40,7 @@
   const ixAt = (rows, t) => { let k = 0; for (let i = 0; i < rows.length; i++) { if (rows[i].t <= t) k = i; else break; } return k; };
   function put(host, S, ann, o) {
     S.ann = ann;
-    return ICT.Chart(host, S, Object.assign({ layers: ['ann'], avail: ['ann', 'swing', 'struct', 'fvg', 'ob', 'liq', 'kz'], h: 330, slotMin: 5 }, o || {}));
+    return ICT.Chart(host, S, Object.assign({ layers: ['ann', 'struct', 'fvg', 'ob'], avail: ['ann', 'swing', 'struct', 'fvg', 'ob', 'liq', 'kz'], h: 330, slotMin: 5 }, o || {}));
   }
   const TFS = { h4: ['4H', '240', 'bias và dealing range'], h1: ['1H', '60', 'cấu trúc và vùng vào'], m15: ['15m', '15', 'kích hoạt và kế hoạch lệnh'], m5: ['5m', '5', 'điểm vào chi tiết'] };
   const extIx = (rows, t0, t1, low) => { let k = -1, v = low ? 1e18 : -1e18; rows.forEach((r, i) => { if (r.t >= t0 && r.t < t1 && (low ? r.l < v : r.h > v)) { v = low ? r.l : r.h; k = i; } }); return k < 0 ? ixAt(rows, t0) : k; };
@@ -65,26 +65,55 @@
       out.push({ t: 'label', at: ix(s.mss.i, !buy), text: s.mss.k + (buy ? ' ▲' : ' ▼'), c: cb, pos: buy ? 'above' : 'below', lift: 2 });
       return out;
     };
-    const build = (rows, key, anns, extra) => {
-      const S = mkS(rows, 'XAUUSD ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip;
-      put(hosts[key], S, anns(U), Object.assign({ pos: mkPos(rows, U), range: [0, rows.length], h: 320, slotMin: 3, frames: false, noTg: true }, extra || {}));
+    const all = [], sync = (k, on) => all.forEach((c) => c.setLayer(k, on));
+    const build = (rows, key, anns, extra, defStart) => {
+      const S = mkS(rows, 'XAUUSD ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, Math.min(defStart || 0, rows.length - 20));
+      const ch = put(hosts[key], S, anns(U), Object.assign({ pos: mkPos(rows, U), range: [ds, rows.length], h: 320, slotMin: 1, frames: false, onLayer: sync }, extra || {}));
+      all.push(ch); ZM.set(hosts[key].closest('figure'), { ch, len: rows.length, pad: (extra && extra.pad) || 12, s: ds, e: rows.length, def: [ds, rows.length] });
     };
-    // 15m
+    // 15m: hiển thị mặc định từ trước điểm quét một chút; kéo/zoom để xem thêm lịch sử (tối đa 400 nến)
     const n15 = m15.length; let a = n15 - 110; if (s) a = Math.max(0, Math.min(s.sweep ? s.sweep.i : s.mss.i, s.ready, s.mss.i, s.zone ? s.zone.x1 : 1e9) - 24);
     a = Math.max(0, n15 - 160, Math.min(a, n15 - 60));
-    const r15 = m15.slice(a);
-    build(r15, 'm15', (U) => (s ? zoneAnn(r15, U).concat(marks(r15, U, false)) : []), { pad: 14 });
-    // 5m: bắt đầu trước điểm quét / MSS một chút, tối đa 200 nến
+    const o15 = Math.max(0, n15 - 400), r15 = m15.slice(o15);
+    build(r15, 'm15', (U) => (s ? zoneAnn(r15, U).concat(marks(r15, U, false)) : []), { pad: 14 }, a - o15);
+    // 5m: mặc định bắt đầu trước điểm quét / MSS một chút, tối đa 200 nến
     let t5 = m15[a].t; if (s) t5 = Math.max(t5, m15[Math.min(s.sweep ? s.sweep.i : s.mss.i, s.mss.i, s.zone ? s.zone.x1 : 1e9)].t - 6 * 900000);
-    const r5 = m5.filter((x) => x.t >= t5).slice(-200);
-    if (r5.length >= 25) build(r5, 'm5', (U) => (s ? zoneAnn(r5, U).concat(marks(r5, U, true)) : []), { pad: 14 });
+    const r5 = m5.slice(-900), d5 = Math.max(r5.length - 200, r5.findIndex((x) => x.t >= t5));
+    if (r5.length >= 45) build(r5, 'm5', (U) => (s ? zoneAnn(r5, U).concat(marks(r5, U, true)) : []), { pad: 14 }, d5);
     else hosts.m5.innerHTML = '<div class="an-tvn">Chưa đủ nến 5m để vẽ.</div>';
     // 1H
-    const r1 = h1.slice(-110);
-    build(r1, 'h1', (U) => [{ t: 'label', at: r1.length - 1, text: 'Bias: ' + (B.dir > 0 ? 'TĂNG' : B.dir < 0 ? 'GIẢM' : 'chưa rõ'), c: B.dir > 0 ? 'bull' : B.dir < 0 ? 'bear' : 'note', pos: 'above', lift: 6 }].concat(s ? zoneAnn(r1, U, s.model === 'ICT' ? 'Vùng vào 15m' : 'Vùng retest') : []), { pad: 12 });
+    const r1 = h1.slice(-300);
+    build(r1, 'h1', (U) => [{ t: 'label', at: r1.length - 1, text: 'Bias: ' + (B.dir > 0 ? 'TĂNG' : B.dir < 0 ? 'GIẢM' : 'chưa rõ'), c: B.dir > 0 ? 'bull' : B.dir < 0 ? 'bear' : 'note', pos: 'above', lift: 6 }].concat(s ? zoneAnn(r1, U, s.model === 'ICT' ? 'Vùng vào 15m' : 'Vùng retest') : []), { pad: 12 }, r1.length - 110);
     // 4H
-    const r4 = h4.slice(-90), R = B.range;
-    build(r4, 'h4', (U) => [{ t: 'hline', y: U(R.hi), x1: 0, x2: 'end', text: 'Đỉnh range 4H ' + f2(R.hi), c: 'warn' }, { t: 'hline', y: U(R.lo), x1: 0, x2: 'end', text: 'Đáy range 4H ' + f2(R.lo), c: 'warn', below: true }, { t: 'hline', y: U(R.eq), x1: 0, x2: 'end', text: 'EQ 50%', c: 'mute' }, { t: 'label', at: r4.length - 1, text: 'Giá ' + f2(res.price), c: 'info', pos: 'above', lift: 6 }], { pad: 10 });
+    const r4 = h4.slice(-200), R = B.range;
+    build(r4, 'h4', (U) => [{ t: 'hline', y: U(R.hi), x1: 0, x2: 'end', text: 'Đỉnh range 4H ' + f2(R.hi), c: 'warn' }, { t: 'hline', y: U(R.lo), x1: 0, x2: 'end', text: 'Đáy range 4H ' + f2(R.lo), c: 'warn', below: true }, { t: 'hline', y: U(R.eq), x1: 0, x2: 'end', text: 'EQ 50%', c: 'mute' }, { t: 'label', at: r4.length - 1, text: 'Giá ' + f2(res.price), c: 'info', pos: 'above', lift: 6 }], { pad: 10 }, r4.length - 90);
+    zWire(el);
+  }
+
+  /* zoom / kéo từng khung: nút − + ⟲, Ctrl + cuộn chuột, kéo ngang để xem lịch sử */
+  const ZM = new WeakMap();
+  function zApply(z) { z.ch.setOpt('range', [z.s, z.e]); }
+  function zoom(fig, f) {
+    const z = ZM.get(fig); if (!z) return;
+    if (f === 0) { z.s = z.def[0]; z.e = z.def[1]; } else {
+      const n = z.e - z.s, nn = Math.max(20, Math.min(z.len, Math.round(n * f))), atEnd = z.e >= z.len - 1;
+      let e = atEnd ? z.len : Math.round((z.s + z.e) / 2 + nn / 2); e = Math.max(nn, Math.min(z.len, e)); z.e = e; z.s = e - nn;
+    }
+    zApply(z);
+  }
+  function zWire(card) {
+    [].forEach.call(card.querySelectorAll('figure[data-f]'), (fig) => {
+      const host = $('[data-ch]', fig), z = ZM.get(fig); if (!z) return; let drag = null, raf = 0;
+      host.addEventListener('wheel', (e) => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); zoom(fig, e.deltaY > 0 ? 1.25 : 0.8); }, { passive: false });
+      host.addEventListener('pointerdown', (e) => { const sv = e.target.closest('svg'); if (!sv || e.button) return; const w = sv.getBoundingClientRect().width; drag = { x: e.clientX, s: z.s, e: z.e, per: (z.e - z.s + z.pad) / Math.max(100, w - 70), id: e.pointerId, moved: false }; });
+      host.addEventListener('pointermove', (e) => {
+        if (!drag || (e.buttons & 1) === 0) { drag = null; return; } const dx = e.clientX - drag.x; if (!drag.moved && Math.abs(dx) < 4) return;
+        if (!drag.moved) { drag.moved = true; try { e.target.closest('svg').setPointerCapture(drag.id); } catch (er) { /* bỏ qua */ } }
+        const sh = Math.round(-dx * drag.per), n = drag.e - drag.s, e2 = Math.max(Math.min(n, z.len), Math.min(z.len, drag.e + sh)); z.e = e2; z.s = e2 - n;
+        if (!raf) raf = requestAnimationFrame(() => { raf = 0; zApply(z); });
+      });
+      const end = () => { drag = null; }; host.addEventListener('pointerup', end); host.addEventListener('pointercancel', end);
+    });
   }
 
   /* chuyển từng ô giữa biểu đồ phân tích và widget TradingView thật */
@@ -100,7 +129,7 @@
     }
     box.style.display = ''; if (note) note.style.display = '';
   }
-  const figs = (cap) => '<div class="an-imgs g2">' + ['h4', 'h1', 'm15', 'm5'].map((k) => '<figure data-f="' + k + '"><figcaption><span>' + TFS[k][0] + ' · ' + ((cap && cap[k]) || TFS[k][2]) + '</span><span class="tvsw"><button type="button" class="on" data-v="an">Phân tích</button><button type="button" data-v="tv">TradingView</button></span></figcaption><div data-ch="' + k + '" class="tvl"></div></figure>').join('') + '</div>';
+  const figs = (cap) => '<div class="an-imgs g2">' + ['h4', 'h1', 'm15', 'm5'].map((k) => '<figure data-f="' + k + '"><figcaption><span>' + TFS[k][0] + ' · ' + ((cap && cap[k]) || TFS[k][2]) + '</span><span class="zm"><button type="button" data-z="out" title="Thu nhỏ (xem nhiều nến hơn)" aria-label="Thu nhỏ">−</button><button type="button" data-z="in" title="Phóng to" aria-label="Phóng to">+</button><button type="button" data-z="rs" title="Về mặc định" aria-label="Về mặc định">⟲</button></span><span class="tvsw"><button type="button" class="on" data-v="an">Phân tích</button><button type="button" data-v="tv">TradingView</button></span></figcaption><div data-ch="' + k + '" class="tvl"></div></figure>').join('') + '</div>';
 
   /* ---------- xuất ảnh PNG ---------- */
   async function svgImg(svg) {
@@ -262,6 +291,7 @@
     };
     view.addEventListener('click', (e) => {
       const ao = e.target.closest('button[data-asof]'); if (ao) { window.scrollTo({ top: 0, behavior: 'smooth' }); run(view, true, +ao.dataset.asof); return; }
+      const zb = e.target.closest('.zm button'); if (zb) { zoom(zb.closest('figure'), zb.dataset.z === 'in' ? 0.7 : zb.dataset.z === 'out' ? 1.45 : 0); return; }
       const sw = e.target.closest('.tvsw button'); if (sw) { const fg = sw.closest('figure'); tvSwitch(fg, fg.dataset.f, sw.dataset.v === 'tv'); return; }
       const b = e.target.closest('button[data-a]'); if (!b || !OUT) return; const card = b.closest('.an-card'), k = card.dataset.k, s = k === 'none' ? null : OUT.res.setups[+k];
       if (b.dataset.a === 'png') { b.disabled = true; exportPng(card, s, OUT.res).catch((er) => alert('Không xuất được ảnh: ' + er.message)).finally(() => (b.disabled = false)); }
