@@ -1,7 +1,7 @@
 /* Quét XAUUSD theo lịch (GitHub Actions) và gửi Telegram khi có setup đủ điều kiện.
    Dùng đúng lõi phân tích của trang web (assets/analyst-core.js). Biến môi trường:
    TG_BOT_TOKEN, TG_CHAT_ID  (bắt buộc để gửi; đặt trong GitHub Secrets)
-   MIN_SCORE (mặc định 60) · SYMBOLS (mặc định XAUUSD; ví dụ "XAUUSD,ETHUSD,SOLUSD") · MODE both|ict|pa · PRICE_OFFSET spot|none|số · SITE_URL
+   MIN_SCORE (mặc định 60) · SYMBOLS (mặc định XAUUSD,BTCUSD) · MODE both|ict|pa · PRICE_OFFSET spot|none|số · SITE_URL
    DRY=1 chỉ in ra + ghi ảnh vào ./out, không gửi · TEST=1 gửi tin thử · FORCE=1 bỏ qua chống trùng */
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm');
@@ -15,7 +15,7 @@ const STATE = path.join(ROOT, '.state', 'state.json');
 const win = {}; win.window = win; win.console = console; vm.createContext(win);
 ['assets/engine.js', 'assets/analyst-core.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
 const A = win.ICT.analyst;
-const SYMBOLS = (env.SYMBOLS || 'XAUUSD').split(/[\s,]+/).map((x) => x.toUpperCase()).filter((x) => A.SYMS[x]);
+const SYMBOLS = (env.SYMBOLS || 'XAUUSD,BTCUSD').split(/[\s,]+/).map((x) => x.toUpperCase()).filter((x) => A.SYMS[x]);
 if (!SYMBOLS.length) SYMBOLS.push('XAUUSD');
 let f2 = (x) => (+x).toFixed(2); // số lẻ đổi theo mã đang xử lý
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));

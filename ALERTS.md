@@ -35,15 +35,15 @@ Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được
 | Biến | Ý nghĩa | Mặc định |
 |---|---|---|
 | `MIN_SCORE` | Điểm tối thiểu để gửi (0–100). Tăng lên 70 để chỉ nhận setup mạnh | 60 |
-| `SYMBOLS` | Các mã được quét và gửi Telegram, ngăn cách bằng dấu phẩy: `XAUUSD`, `ETHUSD`, `SOLUSD`, `XRPUSD`, `BNBUSD`, `BTCUSD`. Ví dụ `XAUUSD,ETHUSD,SOLUSD`. Crypto mặc định chỉ dùng mô hình ICT | XAUUSD |
+| `SYMBOLS` | Các mã được quét và gửi Telegram, ngăn cách bằng dấu phẩy (`XAUUSD`, `BTCUSD`). Muốn chỉ nhận vàng: `XAUUSD` | XAUUSD,BTCUSD |
 | `MODE` | `both`, `ict` hoặc `pa` | both |
 | `PRICE_OFFSET` | `spot` (tự quy đổi theo giá vàng spot), `none`, hoặc một số cộng vào giá (ví dụ `2.5`) | spot |
 | `HB_HOUR` | Giờ UTC gửi tin báo sống hằng ngày (0 = 07:00 giờ Việt Nam) | 0 |
 | `SITE_URL` | Liên kết đặt trong tin nhắn | trang phân tích của bạn |
 
-## Các mã khác (crypto)
+## Bitcoin (BTCUSD)
 
-Trang Phân tích có ô chọn mã: XAUUSD, ETHUSD, SOLUSD, XRPUSD, BNBUSD, BTCUSD (dữ liệu Binance, giao dịch 24/7). Telegram mặc định chỉ gửi XAUUSD; muốn nhận thêm mã nào thì đặt biến `SYMBOLS` như trên. Kiểm chứng 122 ngày gần nhất (trên chính dữ liệu dùng để thiết kế quy tắc, nên chỉ để tham khảo): ICT có lãi nhẹ ở ETH, SOL, XRP, BNB; Price Action lỗ ở mọi mã crypto; BTC lỗ ở cả hai. Vì vậy crypto mặc định chỉ chạy ICT và BTC được đánh dấu là không hợp.
+Trang Phân tích có ô chọn mã XAUUSD / BTCUSD (dữ liệu Binance, BTC giao dịch 24/7), và Telegram gửi cả hai mã theo mặc định (tin BTC có ghi tên mã). Lưu ý: kiểm chứng 122 ngày gần nhất cho thấy các quy tắc này **không có lãi với BTC** (ICT −12.3R, Price Action −4.8R, sau phí), trong khi vàng +10.7R. Tín hiệu BTC chỉ nên dùng để tham khảo và học. Muốn tắt tin BTC: đặt biến `SYMBOLS` = `XAUUSD`.
 
 ## Giới hạn cần biết
 
