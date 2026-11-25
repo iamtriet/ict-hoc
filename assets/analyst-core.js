@@ -26,6 +26,37 @@
   A.closedAt = closedAt;
   const kzOf = (t) => { const m = ny(t).min; for (const k of KZ) if (m >= k[0] && m < k[1]) return k[2]; return null; };
 
+
+  /* ---------- tin tức ảnh hưởng mạnh (USD, mức High): đứng ngoài quanh giờ công bố ----------
+     Lịch thật lấy từ nguồn bên ngoài (bot tải rồi đăng lên nhánh data; trang web đọc lại). Khi không có thì dùng lịch dựng sẵn
+     (NFP, FOMC) để vẫn tránh được các tin lớn nhất. Cửa sổ: tin lãi suất/Fed 60 phút trước – 90 phút sau, số liệu lớn (CPI, NFP, PCE...)
+     45 trước – 60 sau, tin High khác 30 trước – 30 sau. */
+  const RX_FED = /FOMC|Federal Funds|Fed Chair|Powell|Press Conference|Monetary Policy|Interest Rate/i, RX_DATA = /CPI|Non-?Farm|NFP|Unemployment Rate|PCE|PPI|Retail Sales|GDP|Employment Change/i;
+  const newsWin = (title) => (RX_FED.test(title) ? { b: 60, a: 90 } : RX_DATA.test(title) ? { b: 45, a: 60 } : { b: 30, a: 30 });
+  A.newsLabel = (t) => (/CPI/i.test(t) ? 'CPI (lạm phát)' : /Non-?Farm|NFP/i.test(t) ? 'Bảng lương phi nông nghiệp (NFP)' : /Federal Funds|FOMC.*(Statement|Rate)|Interest Rate/i.test(t) ? 'FOMC: quyết định lãi suất' : /Press Conference/i.test(t) ? 'Họp báo FOMC' : /Powell|Fed Chair/i.test(t) ? 'Chủ tịch Fed phát biểu' : /PCE/i.test(t) ? 'Core PCE' : /Unemployment Rate/i.test(t) ? 'Tỷ lệ thất nghiệp' : /Retail Sales/i.test(t) ? 'Doanh số bán lẻ' : /GDP/i.test(t) ? 'GDP' : /PPI/i.test(t) ? 'PPI' : t);
+  const nyUtc = (day, min) => { const b = Date.parse(day + 'T00:00:00Z'); for (const off of [4, 5]) { const t = b + (min + off * 60) * 60000, a = ny(t); if (a.day === day && a.min === min) return t; } return b + (min + 300) * 60000; };
+  /* lịch dựng sẵn: NFP (thứ Sáu đầu tháng 08:30 NY), FOMC (14:00 NY, họp báo 14:30), CPI tháng 11/2026 theo lịch BLS. Chỉ là phương án dự phòng: hãy đối chiếu lịch chính thức. */
+  const FOMC = ['2026-01-28', '2026-03-18', '2026-04-29', '2026-06-17', '2026-07-29', '2026-09-16', '2026-10-28', '2026-12-09', '2027-01-27', '2027-03-17', '2027-04-28', '2027-06-16', '2027-07-28', '2027-09-15', '2027-10-27', '2027-12-08'];
+  A.fallbackEvents = (now) => {
+    const out = [], y0 = new Date(now).getUTCFullYear();
+    for (let y = y0 - 1; y <= y0 + 1; y++) for (let m = 0; m < 12; m++) { let d = new Date(Date.UTC(y, m, 1)); while (d.getUTCDay() !== 5) d = new Date(d.getTime() + 86400000); out.push({ t: nyUtc(d.toISOString().slice(0, 10), 510), title: 'Non-Farm Employment Change', impact: 'High', country: 'USD', est: 1 }); }
+    FOMC.forEach((d) => { out.push({ t: nyUtc(d, 840), title: 'Federal Funds Rate', impact: 'High', country: 'USD', est: 1 }); out.push({ t: nyUtc(d, 870), title: 'FOMC Press Conference', impact: 'High', country: 'USD', est: 1 }); });
+    out.push({ t: nyUtc('2026-12-10', 510), title: 'CPI m/m', impact: 'High', country: 'USD', est: 1 });
+    return out.sort((a, b) => a.t - b.t);
+  };
+  /* ghép lịch thật với lịch dựng sẵn: lịch dựng sẵn chỉ dùng cho khoảng thời gian lịch thật chưa phủ tới (until = mốc cuối của lịch thật) */
+  A.mergeEvents = (feed, until, now) => (feed || []).concat(A.fallbackEvents(now).filter((e) => !until || e.t > until));
+  A.newsState = (events, now) => {
+    const cur = [], nxt = [];
+    (events || []).forEach((e) => {
+      if ((e.country && e.country !== 'USD') || e.impact !== 'High') return;
+      const w = newsWin(e.title), from = e.t - w.b * 60000, to = e.t + w.a * 60000, r = Object.assign({}, e, { from, to, label: A.newsLabel(e.title), mins: Math.round((e.t - now) / 60000) });
+      if (now >= from && now <= to) cur.push(r); else if (e.t > now && e.t - now <= 36 * 3600000) nxt.push(r);
+    });
+    cur.sort((a, b) => a.t - b.t); nxt.sort((a, b) => a.t - b.t);
+    return { block: cur.length > 0, current: cur, next: nxt, until: cur.length ? Math.max.apply(null, cur.map((x) => x.to)) : null };
+  };
+
   /* ---------- tiện ích ---------- */
   const med = (a) => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)] || 0; };
   const atrAt = (b, end, n) => { n = n || 14; end = Math.min(end == null ? b.length : end, b.length); let s = 0, c = 0; for (let i = Math.max(1, end - n); i < end; i++) { s += Math.max(b[i].h - b[i].l, Math.abs(b[i].h - b[i - 1].c), Math.abs(b[i].l - b[i - 1].c)); c++; } return c ? s / c : 0; };
@@ -239,7 +270,8 @@
   /* ---------- Phân tích chính ---------- */
   A.analyze = function (F, opt) {
     opt = opt || {};
-    const { m15, h1, h4 } = F, n = m15.length, price = m15[n - 1].c, res = { now: m15[n - 1].t + MS.m15, price, setups: [], recent: [], watch: [], notes: [], sym: A.cfg(opt.sym || 'XAUUSD', price) };
+    const { m15, h1, h4 } = F, n = m15.length, price = m15[n - 1].c, res = { now: m15[n - 1].t + MS.m15, price, setups: [], recent: [], watch: [], held: [], news: null, notes: [], sym: A.cfg(opt.sym || 'XAUUSD', price) };
+    if (opt.news !== false) { const tn = opt.at != null ? opt.at : res.now; res.news = A.newsState(opt.events && opt.events.length ? opt.events : A.fallbackEvents(tn), tn); }
     if (n < 120 || h1.length < 60 || h4.length < 40) { res.notes.push('Chưa đủ dữ liệu nến để phân tích.'); return res; }
     const B = biasOf(h4, h1, price); res.bias = B; res.closed = closedAt(res.now);
     if (res.closed) { res.notes.push('Thị trường vàng đang nghỉ cuối tuần (PAXG vẫn có giá nhưng thanh khoản mỏng): không phát tín hiệu.'); return res; }
@@ -277,6 +309,10 @@
       }
     });
     res.setups.sort((x, y) => y.score - x.score); res.setups = res.setups.slice(0, 3);
+    if (res.news) { // đứng ngoài quanh tin lớn
+      const tn = opt.at != null ? opt.at : res.now, ns = res.news;
+      if (ns.block) { res.held = res.setups; res.setups = []; const e = ns.current[0], m = Math.round((e.t - tn) / 60000); res.notes.unshift('Đứng ngoài quanh tin mạnh: ' + e.label + ' lúc ' + A.tm(e.t) + ' (' + (m > 0 ? 'còn ' + m + ' phút' : m < 0 ? 'đã ra ' + (-m) + ' phút trước' : 'đang ra') + '). Công cụ tạm không đưa lệnh tới ' + A.tm(ns.until) + '.' + (res.held.length ? ' Có ' + res.held.length + ' setup bị giữ lại, sẽ hiện lại nếu vẫn còn hiệu lực sau đó.' : '')); }
+    }
     res.recent.sort((x, y) => y.ready - x.ready); res.recent = res.recent.slice(0, 6);
     if (!res.setups.length) res.notes.push(res.watch.length ? '' : 'Bias đã rõ nhưng cấu trúc 15m chưa đáp ứng đủ điều kiện của mô hình nào.');
     return res;
@@ -291,7 +327,7 @@
       while (i < N - 1 && Date.now() - t0 < 40) {
         const T = m15[i].t + MS.m15; while (k1 < h1.length && h1[k1].t + MS.h1 <= T) k1++; while (k4 < h4.length && h4[k4].t + MS.h4 <= T) k4++;
         if (k1 >= 60 && k4 >= 40 && !closedAt(T)) {
-          const r = A.analyze({ m15: m15.slice(Math.max(0, i + 1 - win), i + 1), h1: h1.slice(Math.max(0, k1 - 260), k1), h4: h4.slice(Math.max(0, k4 - 120), k4) }, { mode: opt.mode, minScore: opt.minScore, sym: opt.sym });
+          const r = A.analyze({ m15: m15.slice(Math.max(0, i + 1 - win), i + 1), h1: h1.slice(Math.max(0, k1 - 260), k1), h4: h4.slice(Math.max(0, k4 - 120), k4) }, { mode: opt.mode, minScore: opt.minScore, sym: opt.sym, news: opt.news === true });
           r.setups.forEach((s) => {
             if (seen[s.id]) return; if (s.model === 'ICT' && ['pending', 'inzone'].indexOf(s.state) < 0) return; if (s.model === 'PA' && s.state !== 'pending' && s.state !== 'active') return;
             if (s.model === 'PA' && s.ready !== Math.min(win, i + 1) - 1) return;

@@ -35,9 +35,30 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
         });
       }
       ok(id + ': phân tích ' + runs + ' thời điểm, ' + setups + ' setup hợp lệ');
+      // tin mạnh: có setup đang hiệu lực thì đặt một tin USD High ngay sau đó, setup phải bị giữ lại; tin ở xa thì không ảnh hưởng
+      let tested = false;
+      for (let cut = 0; cut <= 300 && !tested; cut += 3) {
+        const T = F.m15[F.m15.length - 1 - cut].t + 900000, f = { m15: F.m15.filter((x) => x.t + 900000 <= T), h1: F.h1.filter((x) => x.t + 3600000 <= T), h4: F.h4.filter((x) => x.t + 14400000 <= T) };
+        const base = A.analyze(f, { mode: 'both', sym: id, news: false }); if (!base.setups.length) continue; tested = true;
+        const near = A.analyze(f, { mode: 'both', sym: id, at: T, events: [{ t: T + 20 * 60000, title: 'CPI m/m', impact: 'High', country: 'USD' }] });
+        if (near.setups.length || near.held.length !== base.setups.length || !near.news.block) throw new Error('tin sắp ra mà setup không bị giữ lại');
+        const far = A.analyze(f, { mode: 'both', sym: id, at: T, events: [{ t: T + 6 * 3600000, title: 'CPI m/m', impact: 'High', country: 'USD' }] });
+        if (far.setups.length !== base.setups.length || far.news.block) throw new Error('tin ở xa lại làm mất setup');
+        const low = A.analyze(f, { mode: 'both', sym: id, at: T, events: [{ t: T + 20 * 60000, title: 'Unemployment Claims', impact: 'Medium', country: 'USD' }] });
+        if (low.setups.length !== base.setups.length) throw new Error('tin mức Medium không được làm mất setup');
+      }
+      ok(id + ': ' + (tested ? 'bộ lọc tin mạnh đúng (giữ setup khi tin sắp ra, không ảnh hưởng khi tin xa/mức thấp)' : 'không tìm được setup mẫu để thử bộ lọc tin (bỏ qua)'));
       await new Promise((res, rej) => { try { A.backtest(F, { mode: 'both', sym: id, start: 260 }, null, (r) => { if (![r.ids, r.filled, r.tot].every(num)) rej(new Error('kết quả kiểm chứng không phải số')); else { ok(id + ': kiểm chứng chạy được (' + r.ids + ' setup)'); res(); } }); } catch (e) { rej(e); } });
     } catch (e) { fail(id + ': ' + e.message); }
   }
+  // lịch tin: cửa sổ đứng ngoài đúng theo từng loại tin
+  const fb = A.fallbackEvents(Date.UTC(2026, 10, 25)), has = (t, ti) => fb.some((e) => e.t === t && e.title === ti);
+  if (!has(Date.UTC(2026, 11, 4, 13, 30), 'Non-Farm Employment Change') || !has(Date.UTC(2026, 11, 9, 19, 0), 'Federal Funds Rate')) fail('lịch dựng sẵn sai ngày NFP/FOMC');
+  const fomc = [{ t: Date.UTC(2026, 11, 9, 19, 0), title: 'Federal Funds Rate', impact: 'High', country: 'USD' }], blk = (ev, dm) => A.newsState(ev, ev[0].t + dm * 60000).block;
+  if (!(blk(fomc, -59) && !blk(fomc, -61) && blk(fomc, 89) && !blk(fomc, 91))) fail('cửa sổ tin FOMC phải là 60 phút trước – 90 phút sau');
+  const cpi = [{ t: Date.UTC(2026, 11, 10, 13, 30), title: 'CPI m/m', impact: 'High', country: 'USD' }];
+  if (!(blk(cpi, -44) && !blk(cpi, -46) && blk(cpi, 59) && !blk(cpi, 61))) fail('cửa sổ tin CPI phải là 45 phút trước – 60 phút sau');
+  if (!bad) ok('Lịch tin: ngày NFP/FOMC dựng sẵn và cửa sổ đứng ngoài đúng');
   // 3. bot Telegram: cú pháp đã kiểm ở trên; thử nạp lõi như bot
   console.log(bad ? '\n' + bad + ' lỗi' : '\nTất cả kiểm tra đạt'); process.exit(bad ? 1 : 0);
 })();

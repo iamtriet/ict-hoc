@@ -21,6 +21,14 @@ Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được
 4. **Chạy thử.** Vào tab *Actions → XAUUSD alerts → Run workflow*, tích **test**, bấm chạy. Vài chục giây sau bot gửi tin
    "Kết nối thành công". Tích thêm **force** nếu muốn gửi lại setup đang có (nếu có).
 
+## Đứng ngoài quanh tin mạnh
+
+Công cụ (web và bot) không đưa lệnh quanh các tin USD mức High: lãi suất/FOMC, họp báo và phát biểu của Chủ tịch Fed (từ 60 phút trước đến 90 phút sau), CPI, NFP, PCE, PPI, GDP, bán lẻ, thất nghiệp (45 trước – 60 sau), tin High khác (30 trước – 30 sau). Áp dụng cho cả vàng và BTC. Setup đang có bị giữ lại trong cửa sổ đó và hiện lại sau tin nếu còn hiệu lực. Trang web hiện khung cảnh báo khi đang trong vùng tin, hoặc liệt kê các tin sắp tới; tin báo sống buổi sáng cũng ghi tin mạnh sắp tới.
+
+- Lịch lấy từ nguồn công khai (nfs.faireconomy.media), bot tải mỗi giờ và đăng lên nhánh `data` của kho (file `calendar.json`) để trang web đọc. Nếu không tải được, dùng lịch dựng sẵn gồm NFP và FOMC (CPI tháng 11/2026 theo lịch BLS); lịch này có thể thiếu các tin khác nên hãy tự đối chiếu lịch chính thức.
+- Tắt chức năng này: đặt biến `NEWS` = `off` trong *Settings → Secrets and variables → Actions → Variables*.
+- Kiểm chứng 122 ngày chưa tính được tác dụng của bộ lọc này vì không có lịch tin lịch sử đầy đủ.
+
 ## Tin hệ thống (để biết bot còn sống)
 
 - 💚 **Báo sống mỗi ngày** lúc khoảng 07:00 giờ Việt Nam: giá, bias hiện tại và số setup đã gửi trong 24 giờ qua. Không thấy tin này nghĩa là bot đã hỏng.

@@ -22,7 +22,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write   # đăng lịch tin lên nhánh data cho trang web
   actions: write
 
 concurrency:
@@ -61,7 +61,9 @@ jobs:
           MIN_SCORE: ${{ vars.MIN_SCORE }}
           MODE: ${{ vars.MODE }}
           SITE_URL: ${{ vars.SITE_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
           HB_HOUR: ${{ vars.HB_HOUR }}
+          NEWS: ${{ vars.NEWS }}
           SYMBOLS: ${{ vars.SYMBOLS }}
           PRICE_OFFSET: ${{ vars.PRICE_OFFSET }}
         run: node scripts/watch.js

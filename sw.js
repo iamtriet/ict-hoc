@@ -1,5 +1,5 @@
 /* Service worker: cache vỏ ứng dụng để học offline; dữ liệu bên ngoài (TradingView, font) luôn lấy từ mạng. */
-const VER = 'ict-v20';
+const VER = 'ict-v21';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'assets/style.css', 'assets/engine.js', 'assets/frames.js', 'assets/player.js', 'assets/scenarios.js', 'assets/scenarios-b.js', 'assets/scenarios-c.js', 'assets/lessons-a.js', 'assets/lessons-b.js',
   'assets/lessons-c.js', 'assets/lessons-d.js', 'assets/lessons-e.js', 'assets/lessons-f.js', 'assets/lessons-g.js', 'assets/lessons-h.js', 'assets/glossary.js', 'assets/abbr.js', 'assets/tools.js', 'assets/news.js', 'assets/news2.js', 'assets/analyst-core.js', 'assets/analyst.js', 'assets/sync.js', 'assets/app.js'];

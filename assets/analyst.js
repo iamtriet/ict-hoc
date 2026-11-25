@@ -7,6 +7,21 @@
   const f2 = (x) => (+x).toFixed(SYM.dec);
   const offOf = () => (SYM.id === 'XAUUSD' ? +cfgGet().off || 0 : 0); // chênh lệch giá chỉ dùng cho vàng (PAXG ↔ spot)
   /* chênh lệch PAXG ↔ giá vàng spot: lấy từ gold-api.com (cập nhật ~30 giây) và giá PAXG hiện tại, hiệu chỉnh lại mỗi 4 phút khi phân tích */
+  /* lịch tin mạnh (USD, High): bot tải lịch rồi đăng lên nhánh data; trang đọc lại. Không có thì dùng lịch dựng sẵn (NFP, FOMC) */
+  let CAL = { at: 0, events: [], until: 0, upd: null };
+  const CALURL = 'https://raw.githubusercontent.com/iamtriet/ict-hoc/data/calendar.json';
+  async function loadCal() {
+    CAL.at = Date.now(); // tránh gọi lặp khi lỗi
+    const ac = new AbortController(), to = setTimeout(() => ac.abort(), 6000);
+    try {
+      const r = await fetch(CALURL + '?t=' + Math.floor(Date.now() / 300000), { signal: ac.signal, cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json(); if (!Array.isArray(j.events)) throw new Error('sai định dạng');
+      CAL = { at: Date.now(), events: j.events, until: j.until || 0, upd: j.updated };
+      try { localStorage.setItem('ict.cal', JSON.stringify({ events: j.events, until: j.until || 0, upd: j.updated })); } catch (e) { /* bỏ qua */ }
+    } catch (e) {
+      if (!CAL.events.length) { try { const c = JSON.parse(localStorage.getItem('ict.cal')); if (c && c.upd && Date.now() - Date.parse(c.upd) < 3 * 86400000) CAL = { at: CAL.at, events: c.events || [], until: c.until || 0, upd: c.upd }; } catch (er) { /* bỏ qua */ } }
+    } finally { clearTimeout(to); }
+  }
   const SPOT = { t: 0 };
   async function spotOff() {
     const ac = new AbortController(), to = setTimeout(() => ac.abort(), 5000);
@@ -231,6 +246,17 @@
     rows.sort((a, b) => b[0] - a[0]); if (!rows.length) return '';
     return '<div class="an-lv">' + rows.map((r) => '<span class="an-lvi ' + r[2] + '"><b>' + f2(r[0]) + '</b> ' + esc(r[1]) + (res.price >= r[0] ? ' ▾' : ' ▴') + '</span>').join('') + '</div>';
   }
+  function newsHtml(res) {
+    const N = res.news; if (!N) return '';
+    const src = CAL.upd && !ASOF ? 'lịch tin cập nhật ' + new Date(CAL.upd).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'lịch dựng sẵn (NFP, FOMC), có thể thiếu một số tin';
+    if (N.block) {
+      const e = N.current[0], m = e.mins, when = m > 0 ? 'còn ' + m + ' phút nữa là ra' : m < 0 ? 'đã ra ' + (-m) + ' phút trước' : 'đang ra';
+      return '<div class="callout warn"><p><b>⛔ Đang quanh giờ tin mạnh: ' + esc(e.label) + '</b> lúc ' + esc(A.tm(e.t)) + ' (' + when + '). Công cụ <b>đứng ngoài</b> đến ' + esc(A.tm(N.until)) + ': giá thường quét cả hai phía, spread nở rộng, tín hiệu kỹ thuật kém tin cậy.' +
+        (res.held.length ? ' Đang giữ lại ' + res.held.length + ' setup (' + res.held.map((x) => (x.dir === 'BUY' ? 'MUA' : 'BÁN') + ' ' + x.score + ' điểm').join(', ') + '); nếu hết tin mà setup còn hiệu lực thì sẽ hiện lại.' : '') + ' <span class="muted">(' + src + ')</span></p></div>';
+    }
+    if (!N.next.length) return '<p class="an-meta muted">🗓 Không có tin mạnh của USD trong 36 giờ tới <span>(' + src + ')</span></p>';
+    return '<div class="callout tip"><p><b>🗓 Tin mạnh sắp tới (USD):</b> ' + N.next.slice(0, 4).map((e) => esc(e.label) + ' lúc ' + esc(A.tm(e.t)) + ' (còn ' + (e.mins >= 90 ? Math.round(e.mins / 60) + ' giờ' : e.mins + ' phút') + ')').join(' · ') + '. Công cụ tự đứng ngoài từ trước tin 30–60 phút đến sau tin 30–90 phút. <span class="muted">(' + src + ')</span></p></div>';
+  }
   function biasHtml(res) {
     const B = res.bias; if (!B) return '';
     const conflict = (B.t4.dir && B.t1.dir && B.t4.dir !== B.t1.dir) ? '<p class="an-warn">Lưu ý: 4H và 1H đang ngược hướng nhau, độ tin cậy của bias thấp. Chỉ canh những setup có điểm cao.</p>' : '';
@@ -266,6 +292,7 @@
       '<li><b>Mô hình Price Action (15m):</b> phá swing có lực (BOS) → giá quay lại retest mức vừa phá → nến từ chối (pin bar hoặc engulfing) tại mức đó. Entry là giá đóng cửa nến từ chối, SL ngoài râu nến.</li>' +
       '<li><b>Mục tiêu:</b> TP1 là thanh khoản gần nhất chưa bị phá (swing 15m/1H/4H, PDH/PDL, đỉnh/đáy phiên) cách ít nhất 1R; TP2 là thanh khoản xa hơn cách ít nhất 2R. Bắt buộc RR tới TP2 ≥ 1:2.</li>' +
       '<li><b>Chấm điểm 0–100:</b> HTF đồng thuận, chất lượng cú quét, displacement, vùng vào, RR, độ sâu hồi, killzone, trùng vùng 1H chưa lấp. Chỉ hiển thị khi ≥ 50 điểm; tối đa 3 lệnh.</li>' +
+      '<li><b>Đứng ngoài quanh tin mạnh:</b> các tin USD mức High (lãi suất/FOMC, CPI, NFP, PCE, GDP, bán lẻ…) làm giá quét hai phía và spread nở rộng, nên công cụ không đưa lệnh từ trước tin 30–60 phút đến sau tin 30–90 phút (tin lãi suất/Fed có cửa sổ dài nhất). Áp dụng cho cả vàng và BTC.</li>' +
       '<li><b>Không phát tín hiệu</b> khi bias không rõ, ' + (SYM.closes ? 'thị trường vàng nghỉ cuối tuần, ' : '') + 'SL nhỏ hơn $' + (+A.cfg(SYM.id, RAW ? RAW.m15[RAW.m15.length - 1].c : 1).minRisk.toFixed(4)) + ' (gần bằng spread/phí), hoặc vào quá nông (đuổi giá).</li></ol></details></section>';
   }
   function setStatus(msg, kind) { const e = $('#an-st'); if (e) { e.textContent = msg; e.className = 'an-st ' + (kind || ''); } }
@@ -331,12 +358,14 @@
       stage = 'an';
       if (SYM.id === 'XAUUSD' && cfg.autoOff !== false && !ASOF && Date.now() - SPOT.t > 240000) { try { const o = await spotOff(); cfgSet({ off: o }); const ie = $('#an-off', view); if (ie) ie.value = o; } catch (e) { /* giữ mức chênh lệch cũ */ } }
       const off = offOf(), T = ASOF;
+      if (!T && Date.now() - CAL.at > 1200000) await loadCal();
       const cut = (a, ms) => (T ? a.filter((x) => x.t + ms <= T) : a);
       const F = { m15: shift(cut(T && BIG ? BIG : RAW.m15, 900000), off), h1: shift(cut(RAW.h1, 3600000), off), h4: shift(cut(RAW.h4, 14400000), off), m5: shift(cut(RAW.m5, 300000), off) };
       SNAP = keep ? snap() : null; LVR.forEach((c) => clearTimeout(c.timer)); LVR.length = 0; LV.off = off;
-      const res = A.analyze(F, { mode: modeOf(), sym: SYM.id }); res.n = F.m15.length; res.m15 = F.m15; OUT = { F, res };
+      const res = A.analyze(F, { mode: modeOf(), sym: SYM.id, events: T ? CAL.events.concat(A.fallbackEvents(T)) : A.mergeEvents(CAL.events, CAL.until, Date.now()), at: T || Date.now() }); res.n = F.m15.length; res.m15 = F.m15; OUT = { F, res };
       let h = T ? '<div class="callout tip"><p><b>Đang xem lại quá khứ:</b> đây là đúng những gì công cụ sẽ hiển thị tại thời điểm đó (chỉ dùng nến đã đóng).</p><div class="an-btns"><button type="button" class="btn pri" id="an-back">⟲ Quay về hiện tại</button></div></div>' : '';
       h += '<p class="an-meta">Nến 15m mới nhất đóng lúc <b>' + esc(A.tm(res.now)) + '</b> · giá <b>' + f2(res.price) + '</b>' + (off ? ' (đã cộng chênh lệch ' + (off > 0 ? '+' : '') + f2(off) + (cfgGet().autoOff !== false ? ', tự hiệu chỉnh theo giá spot' : '') + ')' : '') + '</p>';
+      h += newsHtml(res);
       if (res.closed) h += '<div class="callout warn"><p>' + esc(res.notes[0]) + '</p></div>';
       h += biasHtml(res);
       if (res.setups.length) res.setups.forEach((s, k) => (h += setupHtml(s, res, k))); else if (!res.closed) h += emptyHtml(res);

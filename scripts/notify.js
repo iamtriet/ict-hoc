@@ -5,7 +5,7 @@
    DRY=1 chỉ in ra + ghi ảnh vào ./out, không gửi · TEST=1 gửi tin thử · FORCE=1 bỏ qua chống trùng */
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm');
-const chartSvg = require('./chart.js');
+const chartSvg = require('./chart.js'), publish = require('./publish-data.js');
 const ROOT = path.join(__dirname, '..'), env = process.env;
 const DRY = env.DRY === '1', TEST = env.TEST === 'true' || env.TEST === '1', FORCE = env.FORCE === 'true' || env.FORCE === '1';
 const MIN = +env.MIN_SCORE || 55, SITE = env.SITE_URL || 'https://iamtriet.github.io/ict-hoc/#analyst';
@@ -67,6 +67,25 @@ function messages(s, cfg) {
   return { cap, body };
 }
 
+/* ---- lịch tin mạnh (USD, High): tải mỗi giờ từ lịch công khai, lưu trong trạng thái, đăng lên nhánh data cho trang web ---- */
+let EV = [];
+async function getEvents(st) {
+  if (env.NEWS === 'off') return [];
+  const now = Date.now(); st.cal = st.cal || { at: 0, events: [] };
+  if (now - st.cal.at > 3600000 && now - (st.calTry || 0) > 600000) {
+    st.calTry = now;
+    try {
+      const rs = await Promise.allSettled(['thisweek', 'nextweek'].map((w) => getJSON('https://nfs.faireconomy.media/ff_calendar_' + w + '.json')));
+      if (rs[0].status !== 'fulfilled') throw new Error(rs[0].reason && rs[0].reason.message ? rs[0].reason.message : 'lỗi mạng');
+      const all = [].concat.apply([], rs.filter((r) => r.status === 'fulfilled' && Array.isArray(r.value)).map((r) => r.value)), until = Math.max.apply(null, all.map((e) => Date.parse(e.date)).filter(isFinite).concat([0])) + 6 * 3600000;
+      const ev = all.filter((e) => e.country === 'USD' && e.impact === 'High').map((e) => ({ t: Date.parse(e.date), title: e.title, impact: 'High', country: 'USD', forecast: e.forecast || '', previous: e.previous || '' })).filter((e) => isFinite(e.t)).sort((a, b) => a.t - b.t);
+      st.cal = { at: now, events: ev, until }; console.log('Lịch tin: ' + ev.length + ' tin mạnh của USD trong 2 tuần');
+      if (!DRY) { try { if (publish({ 'calendar.json': JSON.stringify({ updated: new Date(now).toISOString(), source: 'faireconomy', until, events: ev }) })) console.log('Đã đăng lịch tin lên nhánh data'); } catch (e) { console.log('::warning::' + e.message); } }
+    } catch (e) { console.log('::warning::Không tải được lịch tin: ' + e.message + (st.cal.events.length ? ' (dùng bản đã lưu)' : ' (dùng lịch dựng sẵn)')); }
+  }
+  return now - st.cal.at < 4 * 86400000 ? A.mergeEvents(st.cal.events, st.cal.until, now) : A.fallbackEvents(now);
+}
+
 /* ---- tin hệ thống: báo sống mỗi ngày, báo lỗi dữ liệu, báo chuỗi quét bị đứt ---- */
 const HB_HOUR = env.HB_HOUR !== undefined && env.HB_HOUR !== '' ? +env.HB_HOUR : 0; // giờ UTC gửi tin báo sống (0 = 07:00 giờ Việt Nam)
 const vn = (t) => { const d = new Date((t || Date.now()) + 7 * 3600000); return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
@@ -89,10 +108,11 @@ async function scan(id, st) {
   console.log('[' + id + '] nguồn dữ liệu:', d.src, '· 15m', d.m15.length, '· 1H', d.h1.length, '· 4H', d.h4.length);
   if (env.ASOF) { const T = +env.ASOF, cut = (a, ms) => a.filter((x) => x.t + ms <= T); d.m15 = cut(d.m15, 900000); d.h1 = cut(d.h1, 3600000); d.h4 = cut(d.h4, 14400000); console.log('Chế độ thử: dữ liệu cắt tại', new Date(T).toISOString()); }
   const off = id === 'XAUUSD' ? await offsetOf(d.m15[d.m15.length - 1].c) : 0, sh = (a) => (off ? a.map((x) => ({ t: x.t, o: x.o + off, h: x.h + off, l: x.l + off, c: x.c + off })) : a);
-  const F = { m15: sh(d.m15), h1: sh(d.h1), h4: sh(d.h4) }, res = A.analyze(F, { mode: env.MODE || cfg.mode || 'both', minScore: MIN, sym: id });
+  const F = { m15: sh(d.m15), h1: sh(d.h1), h4: sh(d.h4) }, res = A.analyze(F, { mode: env.MODE || cfg.mode || 'both', minScore: MIN, sym: id, events: EV, at: env.ASOF ? +env.ASOF : Date.now(), news: env.NEWS !== 'off' });
   f2 = (x) => (+x).toFixed(cfg.dec);
   const ageMin = (Date.now() - res.now) / 60000; console.log('Nến 15m cuối đóng lúc', A.tm(res.now - 900000), '· cách đây', Math.round(ageMin), 'phút · chênh lệch giá', off);
   console.log('Bias:', res.bias ? res.bias.text : '–', '· setup:', res.setups.length, '· ghi chú:', res.notes.filter(Boolean).join(' | '));
+  if (res.held && res.held.length) console.log('[' + id + '] giữ lại ' + res.held.length + ' setup vì đang quanh giờ tin mạnh: ' + res.held.map((x) => x.dir + ' ' + x.score).join(', '));
   const out = { id, price: res.price, bias: res.bias ? res.bias.text : 'chưa đủ dữ liệu', ageMin, setups: res.setups.length, src: d.src, dec: cfg.dec };
   if (ageMin > 45 && !FORCE) { console.log('Dữ liệu cũ hơn 45 phút (thị trường nghỉ hoặc nguồn chậm): bỏ qua.'); return out; }
   let sent = 0;
@@ -120,16 +140,22 @@ async function main(st) {
   // chuỗi quét bị đứt: lượt đầu của một lần chạy mà lần quét trước đã quá lâu
   if (first && st.last && (now0 - st.last) / 60000 > 20) await say('⚠️ <b>Bot đã ngừng quét khoảng ' + Math.round((now0 - st.last) / 60000) + ' phút</b> (từ ' + vn(st.last) + ' giờ VN) và vừa được khởi động lại. Những setup xuất hiện trong khoảng đó có thể đã bị bỏ lỡ.');
   st.last = now0;
+  EV = await getEvents(st);
   const rs = []; let err = null;
   for (const id of SYMBOLS) { try { rs.push(await scan(id, st)); } catch (e) { err = err || e; console.log('::warning::[' + id + '] ' + (e && e.message ? e.message : e)); } }
   const ok = rs.filter((r) => !r.fail);
+  const newsLine = () => {
+    const nw = Date.now(), ns = A.newsState(EV, nw), x = ns.current.concat(ns.next).slice(0, 3);
+    if (!x.length) return '\n🗓 Không có tin mạnh của USD trong 36 giờ tới';
+    return '\n🗓 Tin mạnh: ' + x.map((e) => esc(e.label) + ' ' + vn(e.t) + ' VN' + (e.t - nw <= 0 ? ' (đang trong vùng tin, bot đứng ngoài)' : ' (còn ' + (e.mins >= 90 ? Math.round(e.mins / 60) + ' giờ' : e.mins + ' phút') + ')')).join('; ');
+  };
   const L = (r) => r.id + ' ≈ ' + (+r.price).toFixed(r.dec) + ' · ' + esc(r.bias) + (r.ageMin > 45 ? ' (thị trường nghỉ/dữ liệu chậm)' : '');
   if (TEST) await tg('sendMessage', { chat_id: env.TG_CHAT_ID, parse_mode: 'HTML', text: '✅ <b>Kết nối thành công.</b>\nBot sẽ gửi tin khi có setup đủ điều kiện (điểm ≥ ' + MIN + ').\nMã đang quét: ' + SYMBOLS.join(', ') + '\n' + ok.map((r) => L(r) + ' · ' + r.setups + ' setup').join('\n') });
   // báo sống: mỗi ngày một tin, gửi ở lượt quét đầu tiên sau HB_HOUR giờ UTC (kể cả khi thị trường nghỉ)
   const today = new Date().toISOString().slice(0, 10);
   if (ok.length && !env.ASOF && new Date().getUTCHours() >= HB_HOUR && st.hb !== today) {
     const n24 = Object.keys(st.sent).filter((k) => st.sent[k] >= Date.now() - 86400000).length;
-    await say('💚 <b>Bot đang chạy bình thường</b> · ' + vn() + ' giờ VN\n' + ok.map(L).join('\n') + '\nSetup đã gửi trong 24 giờ qua: ' + n24 + '\n<i>Không có tin setup nghĩa là chưa có setup đủ điều kiện, không phải bot hỏng.</i>');
+    await say('💚 <b>Bot đang chạy bình thường</b> · ' + vn() + ' giờ VN\n' + ok.map(L).join('\n') + '\nSetup đã gửi trong 24 giờ qua: ' + n24 + newsLine() + '\n<i>Không có tin setup nghĩa là chưa có setup đủ điều kiện, không phải bot hỏng.</i>');
     if (!DRY) st.hb = today;
   }
   if (err && !ok.length) throw err;
