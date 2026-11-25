@@ -63,17 +63,45 @@ function messages(s, res) {
   return { cap, body };
 }
 
-async function main() {
-  const d = await load(); console.log('Nguồn dữ liệu:', d.src, '· 15m', d.m15.length, '· 1H', d.h1.length, '· 4H', d.h4.length);
+/* ---- tin hệ thống: báo sống mỗi ngày, báo lỗi dữ liệu, báo chuỗi quét bị đứt ---- */
+const HB_HOUR = env.HB_HOUR !== undefined && env.HB_HOUR !== '' ? +env.HB_HOUR : 0; // giờ UTC gửi tin báo sống (0 = 07:00 giờ Việt Nam)
+const vn = (t) => { const d = new Date((t || Date.now()) + 7 * 3600000); return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
+async function say(text) {
+  if (DRY) { console.log('[tin hệ thống] ' + text.replace(/<[^>]+>/g, '')); return; }
+  try { await tg('sendMessage', { chat_id: env.TG_CHAT_ID, parse_mode: 'HTML', text, disable_web_page_preview: true }); } catch (e) { console.log('Không gửi được tin hệ thống:', e.message); }
+}
+
+async function main(st) {
+  const first = env.LOOP_N === undefined || env.LOOP_N === '1', now0 = Date.now();
+  if (!DRY && (!env.TG_BOT_TOKEN || !env.TG_CHAT_ID)) { console.log('::error::Thiếu TG_BOT_TOKEN hoặc TG_CHAT_ID trong GitHub Secrets.'); process.exit(1); }
+  // chuỗi quét bị đứt: lượt đầu của một lần chạy mà lần quét trước đã quá lâu
+  if (first && st.last && (now0 - st.last) / 60000 > 20) await say('⚠️ <b>Bot XAUUSD đã ngừng quét khoảng ' + Math.round((now0 - st.last) / 60000) + ' phút</b> (từ ' + vn(st.last) + ' giờ VN) và vừa được khởi động lại. Những setup xuất hiện trong khoảng đó có thể đã bị bỏ lỡ.');
+  st.last = now0;
+
+  let d;
+  try { d = await load(); } catch (e) {
+    st.fail = (st.fail || 0) + 1; console.log('::warning::Lỗi dữ liệu lần ' + st.fail + ': ' + e.message);
+    if (st.fail >= 3 && !st.alerted) { st.alerted = true; await say('🔴 <b>Bot XAUUSD không lấy được dữ liệu giá</b> ' + st.fail + ' lần liên tiếp (~' + st.fail * 5 + ' phút). Bot vẫn thử lại mỗi 5 phút và sẽ báo khi hồi phục.\nLỗi: ' + esc(e.message)); }
+    return;
+  }
+  if (st.alerted) await say('✅ <b>Bot XAUUSD đã lấy lại được dữ liệu giá</b> sau ' + st.fail + ' lần lỗi. Quét bình thường trở lại.');
+  st.fail = 0; st.alerted = false;
+  console.log('Nguồn dữ liệu:', d.src, '· 15m', d.m15.length, '· 1H', d.h1.length, '· 4H', d.h4.length);
   if (env.ASOF) { const T = +env.ASOF, cut = (a, ms) => a.filter((x) => x.t + ms <= T); d.m15 = cut(d.m15, 900000); d.h1 = cut(d.h1, 3600000); d.h4 = cut(d.h4, 14400000); console.log('Chế độ thử: dữ liệu cắt tại', new Date(T).toISOString()); }
   const off = await offsetOf(d.m15[d.m15.length - 1].c), sh = (a) => (off ? a.map((x) => ({ t: x.t, o: x.o + off, h: x.h + off, l: x.l + off, c: x.c + off })) : a);
   const F = { m15: sh(d.m15), h1: sh(d.h1), h4: sh(d.h4) }, res = A.analyze(F, { mode: MODE, minScore: MIN });
   const ageMin = (Date.now() - res.now) / 60000; console.log('Nến 15m cuối đóng lúc', A.tm(res.now - 900000), '· cách đây', Math.round(ageMin), 'phút · chênh lệch giá', off);
   console.log('Bias:', res.bias ? res.bias.text : '–', '· setup:', res.setups.length, '· ghi chú:', res.notes.filter(Boolean).join(' | '));
-  if (!DRY && (!env.TG_BOT_TOKEN || !env.TG_CHAT_ID)) { console.log('::error::Thiếu TG_BOT_TOKEN hoặc TG_CHAT_ID trong GitHub Secrets.'); process.exit(1); }
   if (TEST) await tg('sendMessage', { chat_id: env.TG_CHAT_ID, parse_mode: 'HTML', text: '✅ <b>Kết nối thành công.</b>\nBot sẽ gửi tin khi có setup XAUUSD đủ điều kiện (điểm ≥ ' + MIN + ').\nNguồn dữ liệu: ' + esc(d.src) + '\nBias hiện tại: ' + esc(res.bias ? res.bias.text : 'chưa đủ dữ liệu') + '\nSố setup đạt điều kiện lúc này: ' + res.setups.length });
+  // báo sống: mỗi ngày một tin, gửi ở lượt quét đầu tiên sau HB_HOUR giờ UTC (kể cả khi thị trường nghỉ)
+  const today = new Date().toISOString().slice(0, 10);
+  if (!env.ASOF && new Date().getUTCHours() >= HB_HOUR && st.hb !== today) {
+    const n24 = Object.keys(st.sent).filter((k) => st.sent[k] >= Date.now() - 86400000).length;
+    await say('💚 <b>Bot XAUUSD đang chạy bình thường</b> · ' + vn() + ' giờ VN\nGiá ≈ ' + f2(res.price) + ' · ' + esc(res.bias ? res.bias.text : 'chưa đủ dữ liệu') + '\nSetup đã gửi trong 24 giờ qua: ' + n24 + (ageMin > 45 ? '\nThị trường đang nghỉ hoặc dữ liệu chậm (nến 15m cuối cách đây ' + Math.round(ageMin) + ' phút).' : '') + '\n<i>Không có tin setup nghĩa là chưa có setup đủ điều kiện, không phải bot hỏng.</i>');
+    if (!DRY) st.hb = today;
+  }
   if (ageMin > 45 && !FORCE) { console.log('Dữ liệu cũ hơn 45 phút (thị trường nghỉ hoặc nguồn chậm): bỏ qua.'); return; }
-  const st = readState(); let sent = 0;
+  let sent = 0;
   for (const s of res.setups) {
     if (s.score < MIN) continue;
     if (s.model === 'ICT' && ['pending', 'inzone'].indexOf(s.state) < 0 && !FORCE) continue;
@@ -87,6 +115,7 @@ async function main() {
     }
     st.sent[s.id] = Date.now(); sent++; console.log('Đã xử lý', s.id, s.dir, s.score);
   }
-  if (!DRY) writeState(st); console.log('Số thông báo mới:', sent);
+  console.log('Số thông báo mới:', sent);
 }
-main().catch((e) => { console.log('::warning::' + (e && e.message ? e.message : e)); process.exit(e && /Telegram/.test(e.message || '') ? 1 : 0); });
+const st0 = readState(); st0.sent = st0.sent || {};
+main(st0).catch((e) => { console.log('::warning::' + (e && e.message ? e.message : e)); process.exitCode = e && /Telegram/.test(e.message || '') ? 1 : 0; }).finally(() => { if (!DRY) { try { writeState(st0); } catch (e) { console.log('Không ghi được trạng thái:', e.message); } } });

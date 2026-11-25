@@ -21,6 +21,13 @@ Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được
 4. **Chạy thử.** Vào tab *Actions → XAUUSD alerts → Run workflow*, tích **test**, bấm chạy. Vài chục giây sau bot gửi tin
    "Kết nối thành công". Tích thêm **force** nếu muốn gửi lại setup đang có (nếu có).
 
+## Tin hệ thống (để biết bot còn sống)
+
+- 💚 **Báo sống mỗi ngày** lúc khoảng 07:00 giờ Việt Nam: giá, bias hiện tại và số setup đã gửi trong 24 giờ qua. Không thấy tin này nghĩa là bot đã hỏng.
+- 🔴 **Lỗi dữ liệu**: không lấy được giá 3 lần liên tiếp (~15 phút) thì báo; khi hồi phục báo thêm một tin ✅.
+- ⚠️ **Chuỗi quét bị đứt**: khi bot khởi động lại sau hơn 20 phút không quét, nó báo khoảng thời gian bị bỏ lỡ.
+- 🔴 **Lượt chạy hỏng** (lỗi cài đặt, v.v.): bước cuối của workflow gửi tin kèm liên kết tới lượt chạy đó.
+
 ## Tuỳ chỉnh (không bắt buộc)
 
 Đặt trong *Settings → Secrets and variables → Actions → Variables*:
@@ -30,6 +37,7 @@ Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được
 | `MIN_SCORE` | Điểm tối thiểu để gửi (0–100). Tăng lên 70 để chỉ nhận setup mạnh | 60 |
 | `MODE` | `both`, `ict` hoặc `pa` | both |
 | `PRICE_OFFSET` | `spot` (tự quy đổi theo giá vàng spot), `none`, hoặc một số cộng vào giá (ví dụ `2.5`) | spot |
+| `HB_HOUR` | Giờ UTC gửi tin báo sống hằng ngày (0 = 07:00 giờ Việt Nam) | 0 |
 | `SITE_URL` | Liên kết đặt trong tin nhắn | trang phân tích của bạn |
 
 ## Giới hạn cần biết

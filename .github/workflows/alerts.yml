@@ -57,6 +57,7 @@ jobs:
           MIN_SCORE: ${{ vars.MIN_SCORE }}
           MODE: ${{ vars.MODE }}
           SITE_URL: ${{ vars.SITE_URL }}
+          HB_HOUR: ${{ vars.HB_HOUR }}
           PRICE_OFFSET: ${{ vars.PRICE_OFFSET }}
         run: bash scripts/loop.sh
 
@@ -66,6 +67,14 @@ jobs:
         with:
           path: .state
           key: xau-state-${{ github.run_id }}
+
+      - name: Báo lỗi qua Telegram nếu lượt chạy hỏng
+        if: failure()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          curl -s -o /dev/null "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"             --data-urlencode "chat_id=${TG_CHAT_ID}"             --data-urlencode "text=🔴 Bot XAUUSD: lượt chạy trên GitHub Actions bị lỗi. Chi tiết: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} . Cron mỗi giờ sẽ thử khởi động lại; nếu không thấy tin báo sống sáng mai, hãy vào Actions bấm Run workflow." || true
 
       - name: Tự gọi lượt kế tiếp
         if: success()

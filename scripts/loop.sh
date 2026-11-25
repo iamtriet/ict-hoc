@@ -7,7 +7,7 @@ n=0
 while :; do
   n=$((n + 1))
   echo "::group::Lượt $n · $(date -u '+%Y-%m-%d %H:%M:%S') UTC"
-  node scripts/notify.js || echo "Lượt $n lỗi (mã $?), vẫn tiếp tục"
+  LOOP_N=$n node scripts/notify.js || echo "Lượt $n lỗi (mã $?), vẫn tiếp tục"
   echo "::endgroup::"
   # Chỉ lượt đầu mới dùng TEST/FORCE
   unset TEST FORCE
