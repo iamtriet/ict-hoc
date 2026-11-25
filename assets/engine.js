@@ -425,6 +425,7 @@
         else s += mk(p.tp, 'ptp', 'TP', p.tp);
         s += mk(p.entry, 'pe', (p.dir === 1 ? 'BUY ' : 'SELL ') + S.fmt(p.entry), p.entry);
       }
+      if (o.lastLine && i1 > x0) { const lb = S.bars[i1 - 1], up = lb.c >= lb.o, yy = py(lb.c); s += '<line class="lpl ' + (up ? 'u' : 'd') + '" x1="' + m.l + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><rect class="lpg ' + (up ? 'u' : 'd') + '" x="' + (right + 1) + '" y="' + (yy - 7) + '" width="' + (m.r - 3) + '" height="14" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5) + '" text-anchor="middle">' + S.fmt(lb.c) + '</text>'; }
       (o.trades || []).forEach((t) => { if (t.i1 < x0) return; s += '<line class="trd ' + (t.R >= 0 ? 'w' : 'l') + '" x1="' + px(Math.max(t.i0, x0)) + '" y1="' + py(t.entry) + '" x2="' + px(t.i1) + '" y2="' + py(t.exit) + '"/><circle class="trd-dot ' + (t.R >= 0 ? 'w' : 'l') + '" cx="' + px(t.i1) + '" cy="' + py(t.exit) + '" r="3.5"/>'; });
       s += '<g class="xh" style="display:none"><line class="xl" y1="' + m.t + '" y2="' + (H - m.b) + '"/></g>';
       svg.setAttribute('width', Wt); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + Wt + ' ' + H);

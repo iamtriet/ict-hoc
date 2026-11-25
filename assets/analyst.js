@@ -80,11 +80,10 @@
       });
       return out;
     };
-    const all = [], sync = (k, on) => all.forEach((c) => c.setLayer(k, on));
     const build = (rows, key, anns, extra, defStart) => {
       const S = mkS(rows, 'XAUUSD ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, Math.min(defStart || 0, rows.length - 20));
-      const ch = put(hosts[key], S, anns(U).concat(pastAnn(rows, U)), Object.assign({ pos: mkPos(rows, U), range: [ds, rows.length], h: 320, slotMin: 1, frames: false, onLayer: sync }, extra || {}));
-      all.push(ch); ZM.set(hosts[key].closest('figure'), { ch, len: rows.length, pad: (extra && extra.pad) || 12, s: ds, e: rows.length, def: [ds, rows.length] });
+      const ch = put(hosts[key], S, anns(U).concat(pastAnn(rows, U)), Object.assign({ pos: mkPos(rows, U), range: [ds, rows.length], h: 320, slotMin: 1, frames: false, lastLine: true }, extra || {}));
+      LVR.push({ key, S, ch, fig: hosts[key].closest('figure'), t: rows[rows.length - 1].t }); ZM.set(hosts[key].closest('figure'), { ch, len: rows.length, pad: (extra && extra.pad) || 12, s: ds, e: rows.length, def: [ds, rows.length] });
     };
     // 15m: hiển thị mặc định từ trước điểm quét một chút; kéo/zoom để xem thêm lịch sử (tối đa 400 nến)
     const n15 = m15.length; let a = n15 - 110; if (s) a = Math.max(0, Math.min(s.sweep ? s.sweep.i : s.mss.i, s.ready, s.mss.i, s.zone ? s.zone.x1 : 1e9) - 24);
@@ -233,16 +232,62 @@
   }
   function setStatus(msg, kind) { const e = $('#an-st'); if (e) { e.textContent = msg; e.className = 'an-st ' + (kind || ''); } }
 
+  /* ---------- giá trực tiếp: Binance WebSocket (dự phòng: hỏi lại REST mỗi 5 giây), cập nhật nến đang chạy trên từng khung ---------- */
+  const LVR = [], LV = { on: false, ws: null, retry: 0, last: {}, lastMsg: 0, price: null, dir: 0, off: 0 };
+  const KEYS = { '5m': 'm5', '15m': 'm15', '1h': 'h1', '4h': 'h4' }, TFMS = { m5: 300000, m15: 900000, h1: 3600000, h4: 14400000 };
+  const NYF = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', hour: '2-digit', minute: '2-digit', month: '2-digit', day: '2-digit' });
+  const nyp = (t) => { const q = {}; NYF.formatToParts(new Date(t)).forEach((z) => (q[z.type] = z.value)); return { m: +q.hour * 60 + +q.minute, d: q.day + '/' + q.month }; };
+  function paint(c, r) {
+    const S = c.S, o = LV.off, u = (p) => (p + o - S.base) / S.pip, bar = { o: u(r.o), h: u(r.h), l: u(r.l), c: u(r.c) }, tf = TFMS[c.key];
+    if (r.t < c.t) return; if (r.t > c.t + tf) { c.stale = true; return; }
+    const z = ZM.get(c.fig); let grew = false;
+    if (r.t === c.t) S.bars[S.n - 1] = bar;
+    else { const q = nyp(r.t); S.bars.push(bar); S.mins.push(q.m); S.dates.push(q.d); S.n = S.bars.length; c.t = r.t; grew = true; }
+    if (grew && z) { const n = z.e - z.s, atEnd = z.e >= z.len; z.len = S.n; if (atEnd) { z.e = z.len; z.s = z.e - n; } if (z.def[1] >= z.len - 1) { z.def = [z.def[0] + 1, z.len]; } c.ch.o.range = [z.s, z.e]; c.ch.setV(S.n); } else c.ch.draw();
+  }
+  function applyRec(key, r) {
+    LVR.forEach((c) => {
+      if (c.key !== key) return; c.pend = r; if (c.timer) return;
+      c.timer = setTimeout(() => { c.timer = 0; if (!c.fig.isConnected || document.hidden || !c.pend) return; try { paint(c, c.pend); } catch (e) { /* bỏ qua một lần vẽ lỗi */ } }, 600);
+    });
+  }
+  function onKline(k) {
+    const key = KEYS[k.i]; if (!key) return; const r = { t: +k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, x: !!k.x };
+    LV.last[key] = r; LV.lastMsg = Date.now();
+    if (key === 'm5') { if (LV.price != null) LV.dir = r.c > LV.price ? 1 : r.c < LV.price ? -1 : LV.dir; LV.price = r.c; }
+    applyRec(key, r);
+    if (key === 'm15' && r.x) { setStatus('Nến 15m vừa đóng: bấm "Phân tích ngay" để cập nhật phân tích với nến mới.', 'ok'); const b = $('#an-run'); if (b) b.classList.add('pulse'); }
+  }
+  function liveUi() {
+    const e = $('#an-live'); if (!e) return; if (!LV.on) { e.className = 'an-live'; e.innerHTML = ''; return; }
+    const ok = LV.lastMsg && Date.now() - LV.lastMsg < 15000;
+    e.className = 'an-live' + (ok ? ' on ' + (LV.dir > 0 ? 'up' : LV.dir < 0 ? 'dn' : '') : ''); e.innerHTML = '<i></i>' + (ok ? 'Trực tiếp · <b>' + f2(LV.price + LV.off) + '</b>' : 'Đang kết nối giá trực tiếp…');
+  }
+  function livePoll() {
+    Promise.all(['5m', '15m', '1h', '4h'].map((iv) => getJSON('/api/v3/klines?symbol=PAXGUSDT&interval=' + iv + '&limit=2').then((k) => k.forEach((x, j) => onKline({ i: iv, t: x[0], o: x[1], h: x[2], l: x[3], c: x[4], x: j < k.length - 1 }))))).catch(() => { /* thử lại ở lần sau */ });
+  }
+  function liveConnect() {
+    const hosts = ['wss://stream.binance.com:9443', 'wss://data-stream.binance.vision'], h = hosts[LV.retry % 2];
+    let ws; try { ws = new WebSocket(h + '/stream?streams=' + ['5m', '15m', '1h', '4h'].map((i) => 'paxgusdt@kline_' + i).join('/')); } catch (e) { ws = null; }
+    const lost = () => { if (ws && LV.ws !== ws) return; LV.ws = null; if (!LV.on) return; LV.retry++; if (LV.retry >= 2 && !LV.poll) { livePoll(); LV.poll = setInterval(livePoll, 5000); } setTimeout(() => { if (LV.on && !LV.ws) liveConnect(); }, Math.min(15000, 1500 * LV.retry)); };
+    if (!ws) { lost(); return; }
+    LV.ws = ws; ws.onmessage = (m) => { try { const d = JSON.parse(m.data).data; if (d && d.k) onKline(d.k); } catch (e) { /* bỏ qua gói lỗi */ } };
+    ws.onopen = () => { LV.retry = 0; if (LV.poll) { clearInterval(LV.poll); LV.poll = null; } }; ws.onclose = lost; ws.onerror = lost;
+  }
+  function liveStart() { if (LV.on) return; LV.on = true; liveConnect(); LV.watch = setInterval(liveUi, 1000); document.addEventListener('visibilitychange', LV.vis = () => { if (!document.hidden) Object.keys(LV.last).forEach((k) => applyRec(k, LV.last[k])); }); }
+  function liveStop() { if (!LV.on) return; LV.on = false; const w = LV.ws; LV.ws = null; try { if (w) w.close(); } catch (e) { /* bỏ qua */ } clearInterval(LV.watch); clearInterval(LV.poll); LV.poll = null; document.removeEventListener('visibilitychange', LV.vis); LV.price = null; liveUi(); }
+
   /* ---------- chạy phân tích ---------- */
   async function run(view, force, asOf) {
     if (asOf !== undefined) ASOF = asOf;
     if (running) return; running = true; const out = $('#an-out', view), btn = $('#an-run', view); btn.disabled = true;
     try {
       const cfg = cfgGet(); setStatus('Đang tải nến 15m, 1H, 4H…', ''); out.innerHTML = '<div class="an-wait">Đang tải dữ liệu và phân tích…</div>';
-      if (force || !RAW || Date.now() - RAW.at > 60000) RAW = await loadAll(1000);
+      if (force || !RAW || Date.now() - RAW.at > 20000) RAW = await loadAll(1000);
       const off = +cfg.off || 0, T = ASOF;
       const cut = (a, ms) => (T ? a.filter((x) => x.t + ms <= T) : a);
       const F = { m15: shift(cut(T && BIG ? BIG : RAW.m15, 900000), off), h1: shift(cut(RAW.h1, 3600000), off), h4: shift(cut(RAW.h4, 14400000), off), m5: shift(cut(RAW.m5, 300000), off) };
+      LVR.forEach((c) => clearTimeout(c.timer)); LVR.length = 0; LV.off = off;
       const res = A.analyze(F, { mode: cfg.mode || 'both' }); res.n = F.m15.length; res.m15 = F.m15; OUT = { F, res };
       let h = T ? '<div class="callout tip"><p><b>Đang xem lại quá khứ:</b> đây là đúng những gì công cụ sẽ hiển thị tại thời điểm đó (chỉ dùng nến đã đóng).</p><div class="an-btns"><button type="button" class="btn pri" id="an-back">⟲ Quay về hiện tại</button></div></div>' : '';
       h += '<p class="an-meta">Nến 15m mới nhất đóng lúc <b>' + esc(A.tm(res.now)) + '</b> · giá <b>' + f2(res.price) + '</b>' + (off ? ' (đã cộng chênh lệch ' + (off > 0 ? '+' : '') + f2(off) + ')' : '') + '</p>';
@@ -252,6 +297,7 @@
       h += recentHtml(res) + '<div id="an-bt"></div>' + methodHtml();
       out.innerHTML = h;
       if (res.bias) { if (res.setups.length) res.setups.forEach((s, k) => charts($('[data-k="' + k + '"]', out), F, res, s)); else if (!res.closed) charts($('[data-k=none]', out), F, res, null); }
+      if (T) liveStop(); else liveStart(); const rb = $('#an-run', view); if (rb) rb.classList.remove('pulse');
       if (T) { const bk = $('#an-back', out); if (bk) bk.onclick = () => run(view, true, null); } else btBox(view);
       setStatus('Cập nhật xong lúc ' + new Date().toLocaleTimeString('vi-VN'), 'ok');
     } catch (e) {
@@ -294,7 +340,7 @@
       '<div class="callout warn"><p>Đây là công cụ <b>giáo dục</b>: áp dụng quy tắc cố định lên dữ liệu giá để bạn thấy cách đọc cấu trúc, không phải lời khuyên đầu tư và không biết tình hình tài chính của bạn. Giao dịch đòn bẩy có thể mất toàn bộ vốn. Luôn tự kiểm tra lại trên biểu đồ của broker trước khi vào lệnh.</p></div>' +
       '<div class="an-bar"><button type="button" class="btn pri" id="an-run">⟳ Phân tích ngay</button>' +
       '<label>Mô hình <select id="an-mode"><option value="both">ICT + Price Action</option><option value="ict">Chỉ ICT</option><option value="pa">Chỉ Price Action</option></select></label>' +
-      '<label>Chênh lệch giá (cộng vào) <input id="an-off" type="number" step="0.1" value="' + (+cfg.off || 0) + '" style="width:90px"></label><button type="button" class="btn sm" id="an-spot" title="So giá PAXG với giá vàng spot (gold-api.com) rồi điền chênh lệch">Lấy theo giá spot</button><span id="an-st" class="an-st"></span></div>' +
+      '<label>Chênh lệch giá (cộng vào) <input id="an-off" type="number" step="0.1" value="' + (+cfg.off || 0) + '" style="width:90px"></label><button type="button" class="btn sm" id="an-spot" title="So giá PAXG với giá vàng spot (gold-api.com) rồi điền chênh lệch">Lấy theo giá spot</button><span id="an-st" class="an-st"></span><span id="an-live" class="an-live"></span></div>' +
       '<p class="muted">Dữ liệu: cặp PAXG/USDT trên Binance (token vàng, bám sát XAUUSD nhưng chênh vài đô và giao dịch cả cuối tuần). Nhập chênh lệch với broker của bạn để giá khớp.</p>' +
       '<div id="an-out"></div></div>';
     $('#an-mode', view).value = cfg.mode || 'both';
@@ -312,7 +358,7 @@
       if (b.dataset.a === 'png') { b.disabled = true; exportPng(card, s, OUT.res).catch((er) => alert('Không xuất được ảnh: ' + er.message)).finally(() => (b.disabled = false)); }
       else if (b.dataset.a === 'copy') { const t = planText(s, OUT.res); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).catch(() => { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (er) { /* bỏ qua */ } ta.remove(); }).finally(() => { const o = b.textContent; b.textContent = '✔ Đã sao chép'; setTimeout(() => (b.textContent = o), 1600); }); }
     });
-    ICT.live.push(() => { btRun++; });
+    ICT.live.push(() => { btRun++; liveStop(); LVR.length = 0; });
     run(view, false);
   };
 })();
