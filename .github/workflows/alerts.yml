@@ -1,0 +1,66 @@
+name: XAUUSD alerts
+
+# Quét 15 phút một lần trong giờ giao dịch chính (06:00–21:59 UTC, thứ Hai đến thứ Sáu)
+# và gửi Telegram khi có setup đủ điều kiện. Chi phí khoảng 1.400 phút/tháng (gói miễn phí của kho riêng tư có 2.000).
+on:
+  schedule:
+    - cron: '2,17,32,47 6-21 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      test:
+        description: 'Gửi tin nhắn thử để kiểm tra kết nối Telegram'
+        type: boolean
+        default: false
+      force:
+        description: 'Gửi lại setup hiện có (bỏ qua chống trùng)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xau-alerts
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Khôi phục danh sách đã thông báo
+        uses: actions/cache/restore@v4
+        with:
+          path: .state
+          key: xau-state-${{ github.run_id }}
+          restore-keys: xau-state-
+
+      - name: Cài công cụ dựng ảnh
+        run: |
+          sudo apt-get install -y -qq fonts-dejavu-core >/dev/null 2>&1 || true
+          npm i --no-save --no-audit --no-fund @resvg/resvg-js || echo "::warning::Không cài được resvg, tin nhắn sẽ không kèm ảnh"
+
+      - name: Quét và gửi thông báo
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TEST: ${{ inputs.test }}
+          FORCE: ${{ inputs.force }}
+          MIN_SCORE: ${{ vars.MIN_SCORE }}
+          MODE: ${{ vars.MODE }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          PRICE_OFFSET: ${{ vars.PRICE_OFFSET }}
+        run: node scripts/notify.js
+
+      - name: Lưu danh sách đã thông báo
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state
+          key: xau-state-${{ github.run_id }}
