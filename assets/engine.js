@@ -224,9 +224,8 @@
 
     function draw() {
       const W = Math.max(280, wrap.clientWidth || host.clientWidth || 600);
-      const K = o.fs === false ? 1 : typeof o.fs === 'number' ? o.fs : clamp(0.5 + W / 1280, 0.8, 1.6); // hệ số cỡ chữ: khung càng rộng chữ càng to (640px = 1.0)
       const vb = Math.min(v, S0.n); S = ICT.frameView ? ICT.frameView(S0, F, vb) : S0; const vv = S.vF != null ? S.vF : vb;
-      const m = { l: 6, r: Math.round(64 * K), t: Math.round(24 * K), b: Math.round(26 * K) }, rg = o.range ? (S.rmap ? S.rmap(o.range) : o.range) : [0, S.n];
+      const m = { l: 6, r: 64, t: 24, b: 26 }, rg = o.range ? (S.rmap ? S.rmap(o.range) : o.range) : [0, S.n];
       let x0, slots;
       if (o.win) { x0 = Math.max(0, vv - o.win); slots = o.win + 8; } else { x0 = rg[0]; slots = rg[1] - rg[0] + (o.pad == null ? 5 : o.pad); }
       const plotW = Math.max(W - m.l - m.r, slots * o.slotMin), slot = plotW / slots, Wt = plotW + m.l + m.r;
@@ -249,7 +248,7 @@
         for (let k = 0; k < occL.length; k++) { const q = occL[k]; if (r.x1 < q.x2 + 2 && r.x2 > q.x1 - 2 && r.y1 < q.y2 + 1 && r.y2 > q.y1 - 1) return true; }
         return false;
       };
-      const req = (o2) => { o2.pri = o2.pri == null ? 1 : o2.pri; o2.w = o2.text.length * (CW[o2.tc || 'tx'] || 6.1) * K + (o2.kind === 'pill' ? 12 * K : 4); o2.h = (o2.kind === 'pill' ? 17 : (o2.tc === 'tx sm' || o2.tc === 'sw' ? 12 : 14)) * K; reqs.push(o2); };
+      const req = (o2) => { o2.pri = o2.pri == null ? 1 : o2.pri; o2.w = o2.text.length * (CW[o2.tc || 'tx'] || 6.1) + (o2.kind === 'pill' ? 12 : 4); o2.h = o2.kind === 'pill' ? 17 : (o2.tc === 'tx sm' || o2.tc === 'sw' ? 12 : 14); reqs.push(o2); };
       function place(q) {
         const w = q.w, h = q.h, cands = [];
         if (q.box) { // nhãn nằm giữa vùng; nếu vướng nến/nhãn khác thì trượt ngang trong vùng, gần tâm nhất
@@ -267,8 +266,8 @@
         if (q.kind === 'pill') {
           const dirs = q.pos === 'below' ? [1, -1] : [-1, 1];
           for (let di = 0; di < 2; di++) for (let k = 0; k <= 8; k++) for (const dx of [0, -1, 1]) {
-            const lift = (q.lift || 0) * K + k * h * 0.85, cx = q.ax + dx * (w * 0.55 + 8);
-            cands.push({ x1: cx - w / 2, y1: dirs[di] < 0 ? q.ay - 7 * K - h - lift : q.ay + 7 * K + lift, c: k * 10 + di * 45 + Math.abs(dx) * 7 });
+            const lift = (q.lift || 0) + k * h * 0.85, cx = q.ax + dx * (w * 0.55 + 8);
+            cands.push({ x1: cx - w / 2, y1: dirs[di] < 0 ? q.ay - 7 - h - lift : q.ay + 7 + lift, c: k * 10 + di * 45 + Math.abs(dx) * 7 });
           }
         } else {
           const sd = q.side || -1, step = w * 0.55 + 8, maxK = q.maxK == null ? 9 : q.maxK;
@@ -297,19 +296,19 @@
 
       let s = '<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="mk"/></marker></defs>';
       const st = nice(hi - lo, 6);
-      for (let p = Math.ceil(lo / st) * st; p < hi; p += st) { const y = py(p); s += '<line class="gr" x1="' + m.l + '" x2="' + right + '" y1="' + y + '" y2="' + y + '"/><text class="ax" x="' + (right + 5) + '" y="' + (y + 3.5 * K) + '">' + S.fmt(p) + '</text>'; }
+      for (let p = Math.ceil(lo / st) * st; p < hi; p += st) { const y = py(p); s += '<line class="gr" x1="' + m.l + '" x2="' + right + '" y1="' + y + '" y2="' + y + '"/><text class="ax" x="' + (right + 5) + '" y="' + (y + 3.5) + '">' + S.fmt(p) + '</text>'; }
       const need = Math.ceil(64 / slot), lab = [];
       if (S.tf < 1440) {
         const steps = [5, 10, 15, 30, 60, 120, 180, 240, 360, 720], target = need * S.tf, step = steps.find((x) => x >= target && x % S.tf === 0) || 1440;
         for (let i = x0; i < i1; i++) if (S.time(i).m % step === 0) lab.push(i);
       } else for (let i = x0; i < i1; i++) if ((i - x0) % need === 0) lab.push(i);
-      lab.forEach((i) => { s += '<line class="gr" x1="' + px(i) + '" x2="' + px(i) + '" y1="' + (H - m.b) + '" y2="' + (H - m.b + 4) + '"/><text class="ax" x="' + px(i) + '" y="' + (H - 8 * K) + '" text-anchor="middle">' + S.label(i) + '</text>'; });
+      lab.forEach((i) => { s += '<line class="gr" x1="' + px(i) + '" x2="' + px(i) + '" y1="' + (H - m.b) + '" y2="' + (H - m.b + 4) + '"/><text class="ax" x="' + px(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + S.label(i) + '</text>'; });
       const band = (list, cls) => {
         if (S.tf >= 1440) return '';
         let out = '';
         list.forEach((k) => {
           let a = null;
-          const flush = (b) => { if (a == null) return; const xa = px(a) - slot / 2, xb = px(b) + slot / 2; out += '<rect class="' + cls + '" x="' + xa + '" y="' + m.t + '" width="' + (xb - xa) + '" height="' + plotH + '"/><text class="bt" x="' + (xa + 3) + '" y="' + (m.t - 6 * K) + '">' + k.n + '</text>'; a = null; };
+          const flush = (b) => { if (a == null) return; const xa = px(a) - slot / 2, xb = px(b) + slot / 2; out += '<rect class="' + cls + '" x="' + xa + '" y="' + m.t + '" width="' + (xb - xa) + '" height="' + plotH + '"/><text class="bt" x="' + (xa + 3) + '" y="' + (m.t - 6) + '">' + k.n + '</text>'; a = null; };
           for (let i = x0; i < i1; i++) { const t = S.time(i).m, inn = t >= k.s && t < k.e; if (inn && a == null) a = i; if (!inn) flush(i - 1); }
           flush(i1 - 1);
         });
@@ -320,9 +319,9 @@
       const pdBox = (xa, ph, pl, g) => {
         const eqp = (ph + pl) / 2, w = right - xa;
         s += '<g class="' + g + '"><rect class="zp" x="' + xa + '" y="' + py(ph) + '" width="' + w + '" height="' + (py(eqp) - py(ph)) + '"/><rect class="zd" x="' + xa + '" y="' + py(eqp) + '" width="' + w + '" height="' + (py(pl) - py(eqp)) + '"/><line class="eq" x1="' + xa + '" x2="' + right + '" y1="' + py(eqp) + '" y2="' + py(eqp) + '"/></g>';
-        req({ text: 'Premium', ax: right - 4, ay: py(ph) + 12 * K, anchor: 'end', side: 1, tc: 'tx sm', g: 'a a-mute', maxK: 6 });
+        req({ text: 'Premium', ax: right - 4, ay: py(ph) + 12, anchor: 'end', side: 1, tc: 'tx sm', g: 'a a-mute', maxK: 6 });
         req({ text: 'EQ 50%', ax: right - 4, ay: py(eqp), anchor: 'end', side: -1, tc: 'tx sm', g: 'a a-mute', maxK: 6 });
-        req({ text: 'Discount', ax: right - 4, ay: py(pl) - 12 * K, anchor: 'end', side: -1, tc: 'tx sm', g: 'a a-mute', maxK: 6 });
+        req({ text: 'Discount', ax: right - 4, ay: py(pl) - 12, anchor: 'end', side: -1, tc: 'tx sm', g: 'a a-mute', maxK: 6 });
       };
       if (L.has('pd') && i1 > 8) { let ph = -1e9, pl = 1e9; for (let i = Math.max(x0, i1 - 70); i < i1; i++) { ph = Math.max(ph, S.bars[i].h); pl = Math.min(pl, S.bars[i].l); } pdBox(m.l, ph, pl, 'a a-info'); }
       if (D && L.has('fvg')) D.fvg.forEach((z) => {
@@ -412,24 +411,24 @@
         if (q.tc === 'sw' && r.ovl) { occL.pop(); return; } // nhãn swing phụ: hết chỗ thì bỏ, không đè lên nhãn khác
         if (q.kind === 'pill') {
           const below = r.y1 > q.ay, lx = clamp(q.ax, r.x1 + 4, r.x2 - 4), ly = below ? r.y1 : r.y2;
-          s += '<g class="' + q.g + '"><line class="ln" stroke-opacity=".55" x1="' + q.ax + '" y1="' + q.ay + '" x2="' + lx + '" y2="' + ly + '"/><rect class="pl" x="' + r.x1 + '" y="' + r.y1 + '" width="' + q.w + '" height="' + q.h + '" rx="3"/><text class="tx" x="' + (r.x1 + q.w / 2) + '" y="' + (r.y1 + 12 * K) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
-        } else if (r.inn) s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl in" x="' + ((r.x1 + r.x2) / 2) + '" y="' + (r.y2 - 3 * K) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
-        else s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl" x="' + (r.x1 + 2) + '" y="' + (r.y2 - 3 * K) + '">' + esc(q.text) + '</text></g>';
+          s += '<g class="' + q.g + '"><line class="ln" stroke-opacity=".55" x1="' + q.ax + '" y1="' + q.ay + '" x2="' + lx + '" y2="' + ly + '"/><rect class="pl" x="' + r.x1 + '" y="' + r.y1 + '" width="' + q.w + '" height="' + q.h + '" rx="3"/><text class="tx" x="' + (r.x1 + q.w / 2) + '" y="' + (r.y1 + 12) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
+        } else if (r.inn) s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl in" x="' + ((r.x1 + r.x2) / 2) + '" y="' + (r.y2 - 3) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
+        else s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl" x="' + (r.x1 + 2) + '" y="' + (r.y2 - 3) + '">' + esc(q.text) + '</text></g>';
       });
       if (o.pos) {
         const p = o.pos, xa = Math.min(px(p.i), right - 30), full = p.tp2 != null, tpTop = full ? p.tp2 : p.tp;
         const rect = (ya, yb, cls) => '<rect class="pbx ' + cls + '" x="' + xa + '" y="' + Math.min(py(ya), py(yb)) + '" width="' + (right - xa) + '" height="' + Math.abs(py(ya) - py(yb)) + '"/>';
-        const mk = (y, cls, t, price) => { const yy = py(y); return '<line class="ps ' + cls + '" x1="' + xa + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax ps-t ' + cls + 't" x="' + (right - 4) + '" y="' + (yy - 3 * K) + '" text-anchor="end">' + t + '</text><rect class="ptag ' + cls + 'g" x="' + (right + 1) + '" y="' + (yy - 7 * K) + '" width="' + (m.r - 3) + '" height="' + 14 * K + '" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5 * K) + '" text-anchor="middle">' + S.fmt(price) + '</text>'; };
+        const mk = (y, cls, t, price) => { const yy = py(y); return '<line class="ps ' + cls + '" x1="' + xa + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax ps-t ' + cls + 't" x="' + (right - 4) + '" y="' + (yy - 3) + '" text-anchor="end">' + t + '</text><rect class="ptag ' + cls + 'g" x="' + (right + 1) + '" y="' + (yy - 7) + '" width="' + (m.r - 3) + '" height="14" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5) + '" text-anchor="middle">' + S.fmt(price) + '</text>'; };
         s += rect(p.entry, tpTop, 'tp') + rect(p.entry, p.sl, 'sl');
         s += mk(p.sl, 'psl', 'SL' + (p.rrSl ? ' ' + p.rrSl : ''), p.sl);
         if (full) s += mk(p.tp2, 'ptp', 'TP2' + (p.rr2 ? ' · 1:' + p.rr2 : ''), p.tp2) + mk(p.tp1, 'ptp', 'TP1' + (p.rr1 ? ' · 1:' + p.rr1 : ''), p.tp1);
         else s += mk(p.tp, 'ptp', 'TP', p.tp);
         s += mk(p.entry, 'pe', (p.dir === 1 ? 'BUY ' : 'SELL ') + S.fmt(p.entry), p.entry);
       }
-      if (o.lastLine && i1 > x0) { const lb = S.bars[i1 - 1], up = lb.c >= lb.o, yy = py(lb.c); s += '<line class="lpl ' + (up ? 'u' : 'd') + '" x1="' + m.l + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><rect class="lpg ' + (up ? 'u' : 'd') + '" x="' + (right + 1) + '" y="' + (yy - 7 * K) + '" width="' + (m.r - 3) + '" height="' + 14 * K + '" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5 * K) + '" text-anchor="middle">' + S.fmt(lb.c) + '</text>'; }
+      if (o.lastLine && i1 > x0) { const lb = S.bars[i1 - 1], up = lb.c >= lb.o, yy = py(lb.c); s += '<line class="lpl ' + (up ? 'u' : 'd') + '" x1="' + m.l + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><rect class="lpg ' + (up ? 'u' : 'd') + '" x="' + (right + 1) + '" y="' + (yy - 7) + '" width="' + (m.r - 3) + '" height="14" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5) + '" text-anchor="middle">' + S.fmt(lb.c) + '</text>'; }
       (o.trades || []).forEach((t) => { if (t.i1 < x0) return; s += '<line class="trd ' + (t.R >= 0 ? 'w' : 'l') + '" x1="' + px(Math.max(t.i0, x0)) + '" y1="' + py(t.entry) + '" x2="' + px(t.i1) + '" y2="' + py(t.exit) + '"/><circle class="trd-dot ' + (t.R >= 0 ? 'w' : 'l') + '" cx="' + px(t.i1) + '" cy="' + py(t.exit) + '" r="3.5"/>'; });
       s += '<g class="xh" style="display:none"><line class="xl" y1="' + m.t + '" y2="' + (H - m.b) + '"/></g>';
-      svg.style.setProperty('--k', K); svg.setAttribute('width', Wt); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + Wt + ' ' + H);
+      svg.setAttribute('width', Wt); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + Wt + ' ' + H);
       svg.innerHTML = s; geo = { x0, slot, m, i1, W: Wt };
       if (F < S0.tf && wrap.scrollWidth > wrap.clientWidth) wrap.scrollLeft = wrap.scrollWidth;
       if (!hov) showInfo(i1 - 1);

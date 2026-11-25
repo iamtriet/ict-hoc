@@ -232,8 +232,3 @@ abbr.ab:hover, abbr.ab:focus-visible { border-bottom-color: var(--accent); color
 .lpl { stroke-width: 1; stroke-dasharray: 1 3; } .lpl.u { stroke: var(--tvup, var(--bull)); } .lpl.d { stroke: var(--tvdn, var(--bear)); } .lpg.u { fill: var(--tvup, var(--bull)); } .lpg.d { fill: var(--tvdn, var(--bear)); }
 .an-live { font: 600 13px var(--mono); color: var(--faint); display: inline-flex; align-items: center; gap: 6px; } .an-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); display: inline-block; } .an-live.on i { background: var(--bull); animation: sypulse 1.4s ease-in-out infinite; } .an-live.on b { color: var(--fg); } .an-live.up b { color: var(--bull); } .an-live.dn b { color: var(--bear); }
 #an-run.pulse { animation: sypulse 1s ease-in-out infinite; }
-
-/* cỡ chữ trên biểu đồ co giãn theo bề rộng khung (hệ số --k do engine.js đặt: khung 640px = 1) */
-.ch-svg .ax { font-size: calc(10.5px * var(--k, 1)); } .ch-svg .bt { font-size: calc(9.5px * var(--k, 1)); }
-.ch-svg .a .tx { font-size: calc(10.5px * var(--k, 1)); } .ch-svg .a .tx.sm { font-size: calc(9.5px * var(--k, 1)); } .ch-svg .a .tx.b { font-size: calc(11px * var(--k, 1)); }
-.ch-svg .sw { font-size: calc(9px * var(--k, 1)); } .ch-svg .ptx { font-size: calc(10px * var(--k, 1)); }
