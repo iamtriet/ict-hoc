@@ -65,10 +65,25 @@
       out.push({ t: 'label', at: ix(s.mss.i, !buy), text: s.mss.k + (buy ? ' ▲' : ' ▼'), c: cb, pos: buy ? 'above' : 'below', lift: 2 });
       return out;
     };
+    // vùng TP/SL mờ của các setup khác: đã qua (kèm kết quả) hoặc đang chờ
+    const hm = (t) => new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(t));
+    const OUT = { pending: 'chờ', inzone: 'trong vùng', active: 'đang chạy', missed: 'lỡ', expired: 'hết hạn', tp1: 'TP1 ✔', tp2: 'TP2 ✔', tp1be: 'TP1 → BE', sl: 'SL ✖' };
+    const others = (res.recent || []).concat(res.setups.filter((x) => x !== s));
+    const pastAnn = (rows, U) => {
+      const out = [];
+      others.forEach((o) => {
+        const x1 = ixAt(rows, m15[o.ready].t), x2 = o.exit != null ? Math.max(x1 + 1, ixAt(rows, m15[o.exit].t)) : 'end', b = o.dir === 'BUY', tag = (b ? 'MUA ' : 'BÁN ') + hm(m15[o.ready].t) + ' · ' + (OUT[o.state] || o.state);
+        const hi = (p, q) => [U(Math.max(p, q)), U(Math.min(p, q))];
+        const sl = hi(o.entry, o.sl), tp = hi(o.entry, o.tp1);
+        out.push({ t: 'zone', x1, x2, y1: sl[0], y2: sl[1], text: 'SL ' + f2(o.sl), c: 'bear', op: 0.1, ce: true });
+        out.push({ t: 'zone', x1, x2, y1: tp[0], y2: tp[1], text: tag + ' · TP1 ' + f2(o.tp1), c: 'bull', op: 0.1, ce: true });
+      });
+      return out;
+    };
     const all = [], sync = (k, on) => all.forEach((c) => c.setLayer(k, on));
     const build = (rows, key, anns, extra, defStart) => {
       const S = mkS(rows, 'XAUUSD ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, Math.min(defStart || 0, rows.length - 20));
-      const ch = put(hosts[key], S, anns(U), Object.assign({ pos: mkPos(rows, U), range: [ds, rows.length], h: 320, slotMin: 1, frames: false, onLayer: sync }, extra || {}));
+      const ch = put(hosts[key], S, anns(U).concat(pastAnn(rows, U)), Object.assign({ pos: mkPos(rows, U), range: [ds, rows.length], h: 320, slotMin: 1, frames: false, onLayer: sync }, extra || {}));
       all.push(ch); ZM.set(hosts[key].closest('figure'), { ch, len: rows.length, pad: (extra && extra.pad) || 12, s: ds, e: rows.length, def: [ds, rows.length] });
     };
     // 15m: hiển thị mặc định từ trước điểm quét một chút; kéo/zoom để xem thêm lịch sử (tối đa 400 nến)
@@ -190,7 +205,7 @@
       '<div class="an-h"><span class="an-dir ' + (s.dir === 'BUY' ? 'b' : 's') + '">' + (s.dir === 'BUY' ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(s.title) + '</h2>' + chip('Điểm ' + s.score + ' · ' + s.grade, s.grade === 'A+' ? 'ok' : '') + chip(now[0], now[1]) + '</div>' +
       '<div class="an-trade"><div><i>Entry</i><b>' + f2(s.entry) + '</b></div><div><i>Stop loss</i><b class="no">' + f2(s.sl) + '</b></div><div><i>TP1 · 1:' + s.rr1 + '</i><b class="ok">' + f2(s.tp1) + '</b></div><div><i>TP2 · 1:' + s.rr2 + '</i><b class="ok">' + f2(s.tp2) + '</b></div><div><i>Rủi ro</i><b>$' + f2(s.risk) + '/oz</b></div></div>' +
       '<p class="an-tpn">TP1: ' + esc(s.tp1n) + '. TP2: ' + esc(s.tp2n) + '.</p>' +
-      figs() +
+      figs() + '<p class="muted an-leg">Vùng xanh/đỏ nhạt trên biểu đồ là TP1/SL của các setup khác: đã qua (ghi kết quả) hoặc đang chờ. Zoom out để xem các setup cũ hơn.</p>' +
       '<div class="an-btns"><button type="button" class="btn pri" data-a="png">⬇ Lưu ảnh phân tích (PNG)</button><button type="button" class="btn" data-a="copy">⧉ Sao chép kế hoạch</button></div>' +
       '<h3>Phân tích phản ứng giá</h3><ol class="an-story">' + s.story.map((t) => '<li>' + t + '</li>').join('') + '</ol>' +
       '<h3>Điều kiện đã đáp ứng</h3><div class="an-ck">' + s.checks.map((c) => '<div class="' + (c.ok ? 'y' : 'n') + '"><b>' + (c.ok ? '✔' : '✖') + ' ' + esc(c.label) + '</b><span>' + esc(c.detail) + '</span></div>').join('') + '</div>' +
@@ -199,7 +214,7 @@
   function emptyHtml(res) {
     const why = res.notes.filter(Boolean).concat(res.watch).map((t) => '<li>' + esc(t) + '</li>').join('');
     return '<section class="an-card an-none" data-k="none"><div class="an-h"><h2>Chưa có setup đủ điều kiện</h2>' + chip('Đứng ngoài', 'info') + '</div><p>Công cụ chỉ đưa ra lệnh khi cả bias HTF lẫn cấu trúc 15m đều đáp ứng điều kiện của một mô hình. Hiện tại thì chưa, nên không có lệnh BUY/SELL nào được gợi ý. Đứng ngoài cũng là một quyết định giao dịch.</p>' + (why ? '<ul>' + why + '</ul>' : '') +
-      figs({ h1: "cấu trúc", m15: "diễn biến gần nhất" }) +
+      figs({ h1: "cấu trúc", m15: "diễn biến gần nhất" }) + '<p class="muted an-leg">Vùng xanh/đỏ nhạt trên biểu đồ là TP1/SL của các setup khác: đã qua (ghi kết quả) hoặc đang chờ. Zoom out để xem các setup cũ hơn.</p>' +
       '<div class="an-btns"><button type="button" class="btn" data-a="png">⬇ Lưu ảnh phân tích (PNG)</button></div></section>';
   }
   function recentHtml(res) {
