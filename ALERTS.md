@@ -13,7 +13,7 @@ Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được
    - `TG_BOT_TOKEN` = token ở bước 1
    - `TG_CHAT_ID` = số Id ở bước 2
 
-   Hoặc dùng GitHub CLI trong PowerShell (lệnh sẽ hỏi giá trị, bạn tự nhập):
+   Nếu bạn đã cài GitHub CLI (`gh`), có thể dùng PowerShell thay thế (lệnh sẽ hỏi giá trị, bạn tự nhập):
    ```powershell
    gh secret set TG_BOT_TOKEN --repo iamtriet/ict-hoc
    gh secret set TG_CHAT_ID --repo iamtriet/ict-hoc

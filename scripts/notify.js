@@ -28,7 +28,7 @@ async function kraken() {
   return { m15: await get(15), h1: await get(60), h4: await get(240), src: 'api.kraken.com' };
 }
 async function load() {
-  const tries = [() => binance('https://data-api.binance.vision'), () => binance('https://api.binance.com'), kraken]; let err;
+  const tries = env.SOURCE === 'kraken' ? [kraken] : [() => binance('https://data-api.binance.vision'), () => binance('https://api.binance.com'), kraken]; let err;
   for (const t of tries) { try { const d = await t(); if (d.m15.length >= 400 && d.h1.length >= 100 && d.h4.length >= 60) return d; err = new Error('Dữ liệu quá ít từ ' + d.src); } catch (e) { err = e; console.log('Nguồn lỗi:', e.message); } }
   throw err;
 }
