@@ -34,7 +34,7 @@
       const ls = L.filter((l) => l.m === m.n), n = ls.filter((l) => d[l.id]).length;
       h += '<details data-m="' + m.n + '"><summary><span>' + esc(m.title) + '</span><span class="mp">' + n + '/' + ls.length + '</span></summary><div class="ls">' + ls.map((l) => '<a class="nv" href="#' + l.id + '" data-r="' + l.id + '"><i class="dotp ' + (d[l.id] ? 'ok' : '') + '"></i>' + esc(l.title) + '</a>').join('') + '</div></details>';
     });
-    h += '<h6>Thực hành</h6><a class="nv" href="#replay" data-r="replay">▶ Replay Lab</a><a class="nv" href="#live" data-r="live">◉ Biểu đồ XAUUSD trực tiếp</a><a class="nv" href="#news" data-r="news">✺ Tin tức &amp; lịch kinh tế</a><a class="nv" href="#tools" data-r="tools">⚒ Công cụ</a><a class="nv" href="#glossary" data-r="glossary">Aa Từ điển ICT</a><a class="nv" href="#exam" data-r="exam">✎ Thi thử tổng hợp</a><a class="nv" href="#refs" data-r="refs">↗ Tham khảo</a><a class="nv" href="#progress" data-r="progress">◔ Tiến độ</a><a class="nv" href="#sync" data-r="sync">☁ Đồng bộ thiết bị</a>';
+    h += '<h6>Thực hành</h6><a class="nv" href="#analyst" data-r="analyst">◈ Phân tích &amp; gợi ý lệnh</a><a class="nv" href="#replay" data-r="replay">▶ Replay Lab</a><a class="nv" href="#live" data-r="live">◉ Biểu đồ XAUUSD trực tiếp</a><a class="nv" href="#news" data-r="news">✺ Tin tức &amp; lịch kinh tế</a><a class="nv" href="#tools" data-r="tools">⚒ Công cụ</a><a class="nv" href="#glossary" data-r="glossary">Aa Từ điển ICT</a><a class="nv" href="#exam" data-r="exam">✎ Thi thử tổng hợp</a><a class="nv" href="#refs" data-r="refs">↗ Tham khảo</a><a class="nv" href="#progress" data-r="progress">◔ Tiến độ</a><a class="nv" href="#sync" data-r="sync">☁ Đồng bộ thiết bị</a>';
     side.innerHTML = h;
   }
   function markSide(r) {
@@ -53,6 +53,7 @@
     else if (r === 'tools') ICT.tools.hub(view);
     else if (r.indexOf('t-') === 0 && ICT.tools.items[r.slice(2)]) ICT.tools.page(view, r.slice(2));
     else if (r === 'glossary') ICT.glossaryPage(view);
+    else if (r === 'analyst') ICT.analystPage(view);
     else if (r === 'news') ICT.newsPage(view);
     else if (r === 'live') ICT.livePage(view);
     else if (r === 'refs') ICT.refsPage(view);
