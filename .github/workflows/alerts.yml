@@ -1,11 +1,11 @@
 name: XAUUSD alerts
 
-# Quét 15 phút một lần trong giờ giao dịch chính (06:00–21:59 UTC, thứ Hai đến thứ Sáu)
-# và gửi Telegram khi có setup đủ điều kiện. Chi phí khoảng 1.400 phút/tháng (gói miễn phí của kho riêng tư có 2.000).
+# Một lượt chạy giữ máy ~5h40 và quét mỗi 5 phút, cuối lượt tự gọi lại chính nó (không phụ thuộc cron của GitHub,
+# vốn hay trễ hoặc bỏ lượt). Cron mỗi giờ chỉ là lưới an toàn: nếu chuỗi bị đứt thì cron nối lại.
+# Cần repo public (không giới hạn phút Actions).
 on:
   schedule:
-    - cron: '2,17,32,47 * * * 1-5'
-    - cron: '2,17,32,47 22-23 * * 0'
+    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       test:
@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: xau-alerts
@@ -27,7 +28,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +58,7 @@ jobs:
           MODE: ${{ vars.MODE }}
           SITE_URL: ${{ vars.SITE_URL }}
           PRICE_OFFSET: ${{ vars.PRICE_OFFSET }}
-        run: node scripts/notify.js
+        run: bash scripts/loop.sh
 
       - name: Lưu danh sách đã thông báo
         if: always()
@@ -65,3 +66,9 @@ jobs:
         with:
           path: .state
           key: xau-state-${{ github.run_id }}
+
+      - name: Tự gọi lượt kế tiếp
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run alerts.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}"
