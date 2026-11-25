@@ -1,7 +1,7 @@
 # Thông báo Telegram khi có setup XAUUSD
 
 GitHub Actions quét thị trường 24/7: ngay khi nến 15m đóng (nghe WebSocket Binance, trễ vài giây) và dự phòng 5 phút một lần (một lượt chạy giữ máy ~5h40 rồi tự gọi lượt kế tiếp; cron mỗi giờ chỉ là lưới an toàn vì cron của GitHub hay trễ hoặc bỏ lượt), dùng đúng lõi phân tích của trang web
-(`assets/analyst-core.js`). Chỉ khi có setup đạt điều kiện và điểm ≥ 60, bot gửi cho bạn một ảnh biểu đồ 15m kèm
+(`assets/analyst-core.js`). Chỉ khi có setup đạt điều kiện và điểm ≥ 55, bot gửi cho bạn một ảnh biểu đồ 15m kèm
 Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được gửi một lần. Không có setup thì bot im lặng.
 
 ## Cài đặt (một lần, khoảng 5 phút)
@@ -34,7 +34,7 @@ Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được
 
 | Biến | Ý nghĩa | Mặc định |
 |---|---|---|
-| `MIN_SCORE` | Điểm tối thiểu để gửi (0–100). Tăng lên 70 để chỉ nhận setup mạnh | 60 |
+| `MIN_SCORE` | Điểm tối thiểu để gửi (0–100). Tăng lên 70 để chỉ nhận setup mạnh | 55 |
 | `SYMBOLS` | Các mã được quét và gửi Telegram, ngăn cách bằng dấu phẩy (`XAUUSD`, `BTCUSD`). Muốn chỉ nhận vàng: `XAUUSD` | XAUUSD,BTCUSD |
 | `MODE` | `both`, `ict` hoặc `pa` | both |
 | `PRICE_OFFSET` | `spot` (tự quy đổi theo giá vàng spot), `none`, hoặc một số cộng vào giá (ví dụ `2.5`) | spot |

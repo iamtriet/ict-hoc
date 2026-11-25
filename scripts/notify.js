@@ -1,14 +1,14 @@
 /* Quét XAUUSD theo lịch (GitHub Actions) và gửi Telegram khi có setup đủ điều kiện.
    Dùng đúng lõi phân tích của trang web (assets/analyst-core.js). Biến môi trường:
    TG_BOT_TOKEN, TG_CHAT_ID  (bắt buộc để gửi; đặt trong GitHub Secrets)
-   MIN_SCORE (mặc định 60) · SYMBOLS (mặc định XAUUSD,BTCUSD) · MODE both|ict|pa · PRICE_OFFSET spot|none|số · SITE_URL
+   MIN_SCORE (mặc định 55) · SYMBOLS (mặc định XAUUSD,BTCUSD) · MODE both|ict|pa · PRICE_OFFSET spot|none|số · SITE_URL
    DRY=1 chỉ in ra + ghi ảnh vào ./out, không gửi · TEST=1 gửi tin thử · FORCE=1 bỏ qua chống trùng */
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const chartSvg = require('./chart.js');
 const ROOT = path.join(__dirname, '..'), env = process.env;
 const DRY = env.DRY === '1', TEST = env.TEST === 'true' || env.TEST === '1', FORCE = env.FORCE === 'true' || env.FORCE === '1';
-const MIN = +env.MIN_SCORE || 60, SITE = env.SITE_URL || 'https://iamtriet.github.io/ict-hoc/#analyst';
+const MIN = +env.MIN_SCORE || 55, SITE = env.SITE_URL || 'https://iamtriet.github.io/ict-hoc/#analyst';
 const STATE = path.join(ROOT, '.state', 'state.json');
 
 /* ---- nạp lõi phân tích ---- */
