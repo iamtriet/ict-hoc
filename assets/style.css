@@ -249,4 +249,8 @@ abbr.ab:hover, abbr.ab:focus-visible { border-bottom-color: var(--accent); color
 .an-past { display: flex; align-items: center; gap: 12px; margin-top: 12px; color: var(--warn); }
 .page .an-disc { font-size: 12px; color: var(--faint); text-align: center; margin: 12px 0 0; }
 .an-keep > summary { cursor: pointer; }
+/* trạng thái lệnh */
+.page .an-vlive { font-weight: 700; color: var(--warn); margin: -4px 0 12px; } .page .an-vlive:empty { display: none; }
+.an-grp { border-left: 3px solid var(--line); padding-left: 10px; margin: 10px 0; } .an-grp.g-wait { border-left-color: var(--warn); } .an-grp.g-run { border-left-color: var(--info); } .page .an-grp h3 { margin: 0 0 4px; font-size: 14.5px; } .an-grp.g-wait h3 { color: var(--warn); } .an-grp.g-run h3 { color: var(--info); } .an-st-tb td { white-space: nowrap; } .an-st-tb td:last-child { white-space: normal; min-width: 170px; }
 .an-more { margin-top: 10px; } .an-more summary, .an-mdhead summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+@media (max-width: 700px) { .an-st-tb, .an-st-tb tbody { display: block; width: 100%; } .an-st-tb tr:first-child { display: none; } .an-st-tb tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; padding: 9px 10px; border-bottom: 1px solid var(--line); } .page .an-st-tb td { display: block; padding: 0; border: 0; white-space: normal; font-size: 13px; background: none; } .an-st-tb td::before { content: attr(data-l); display: block; font-size: 10.5px; color: var(--faint); font-weight: 400; } .an-st-tb td:last-child { grid-column: 1 / -1; order: -1; min-width: 0; font-weight: 700; } }

@@ -330,7 +330,6 @@
   function verdictHtml(res) {
     const B = res.bias; if (!B) return '<section class="an-card"><p>' + esc(res.notes[0] || 'Chưa đủ dữ liệu.') + '</p></section>';
     let head, cls, tips = [];
-    const md = mdShown(res).filter((x) => x.state === 'active' || !(x.far > 0.04));
     if (res.closed) { head = 'THỊ TRƯỜNG NGHỈ'; cls = 'info'; tips = ['Chờ mở cửa lại (tối Chủ nhật giờ New York).']; }
     else if (res.news && res.news.block) { head = 'ĐỨNG NGOÀI'; cls = 'warn'; tips = ['Không vào lệnh tới <b>' + hmVN(res.news.until) + '</b> (' + esc(res.news.current[0].label) + ').' + (res.held.length ? ' Đang giữ lại ' + res.held.length + ' lệnh.' : '')]; }
     else if (res.setups.length) { const s = res.setups[0]; head = 'CÓ LỆNH ' + side(s.dir); cls = s.dir === 'BUY' ? 'ok' : 'no'; tips = res.setups.map((x) => callOf(x, res)); }
@@ -338,19 +337,23 @@
     else { head = 'ĐỨNG NGOÀI'; cls = 'info'; tips = waitFor(res); }
     if (!res.closed && B.t4.dir && B.t1.dir && B.t4.dir !== B.t1.dir) tips.push('<em>4H và 1H đang ngược hướng: độ tin cậy thấp, chỉ xét lệnh điểm cao.</em>');
     if (!res.closed && !res.setups.length && !['ICT', 'PA'].some((m) => (coreT(m) || {}).ok)) tips.push('<em>ICT và Price Action lỗ trong kiểm chứng ' + SYM.name + ': điều kiện chờ ở trên chỉ để quan sát.</em>');
-    if (!res.closed) md.slice(0, 2).forEach((x) => tips.push('Mô hình ' + x.tf + ': <b>' + side(x.dir) + ' ' + (x.state === 'pending' ? x.type.toLowerCase() + ' ' : '') + f2(x.entry) + '</b> · SL ' + f2(x.sl) + ' · điểm ' + x.score + ' (' + esc(short(x.name)) + ')'));
     const dir = (t) => (t.dir > 0 ? '▲ Tăng' : t.dir < 0 ? '▼ Giảm' : 'Chưa rõ'), tf = (t, bars) => [dir(t), t.dir && bars[t.i] ? t.k + ' ' + dmVN(bars[t.i].t) : '', t.dir > 0 ? 'ok' : t.dir < 0 ? 'no' : ''];
     const tiles = [['Cấu trúc 4H'].concat(tf(B.t4, OUT.F.h4)), ['Cấu trúc 1H'].concat(tf(B.t1, OUT.F.h1)), ['Vị trí trong range 4H', Math.round(B.loc * 100) + '% · ' + (B.loc < 0.5 ? 'Discount' : 'Premium'), f2(B.range.lo) + ' – ' + f2(B.range.hi)], sessionTile(), newsTile(res)];
     return '<section class="an-card an-verdict v-' + cls + '"><div class="an-v-top"><div class="an-v-head">' + head + '</div><div class="an-v-px"><b>' + f2(res.price) + '</b><span>' + SYM.name + ' · nến đóng ' + hmVN(res.now) + ' VN ' + dmVN(res.now) + '</span></div></div>' +
-      '<ul class="an-v-tips">' + tips.map((t) => '<li>' + t + '</li>').join('') + '</ul>' +
+      '<ul class="an-v-tips">' + tips.map((t) => '<li>' + t + '</li>').join('') + '</ul><p id="an-vlive" class="an-vlive"></p>' +
       '<div class="an-tiles">' + tiles.map((t) => '<div class="' + (t[3] ? 'v-' + t[3] : '') + '"><i>' + t[0] + '</i><b>' + esc(t[1]) + '</b><span>' + esc(t[2] || '') + '</span></div>').join('') + '</div>' + levelsHtml(res) + '</section>';
   }
   const factChips = (checks, pts) => '<div class="an-facts">' + checks.map((c) => '<span class="' + (c.ok ? 'y' : 'n') + '" title="' + esc(c.detail) + '">' + (c.ok ? '✔ ' : '✖ ') + esc(short(c.label)) + (pts ? ' <em>' + c.pts + '</em>' : '') + '</span>').join('') + '</div>';
+  /* thuộc tính để đối chiếu một lệnh còn mở với giá trực tiếp (xem liveStatus) */
+  function liveAttr(s, res) {
+    const w = s.state === 'pending' || s.state === 'inzone'; if (!w && s.state !== 'active' && s.state !== 'tp1') return '';
+    return ' data-live="' + (w ? 'w' : 'r') + '" data-d="' + (s.dir === 'BUY' ? 1 : -1) + '" data-e="' + s.entry + '" data-sl="' + s.sl + '" data-t1="' + s.tp1 + '" data-t2="' + s.tp2 + '" data-now="' + res.now + '" data-tag="' + side(s.dir) + ' ' + f2(s.entry) + '"';
+  }
   function setupHtml(s, res, k) {
     const st = ST[s.state] || ['', ''], now = s.model === 'PA' && s.state === 'active' && s.ready === res.n - 1 ? ['Nến xác nhận vừa đóng: vào được', 'ok'] : st, buy = s.dir === 'BUY';
     const cancel = ['đóng cửa ' + (buy ? 'dưới ' : 'trên ') + f2(s.sl)].concat(s.model === 'ICT' ? ['chạm TP1 trước khi khớp', 'quá 9 giờ chưa khớp'] : ['giá đã đi quá 0.5R mà chưa vào']);
     return '<section class="an-card an-setup ' + (buy ? 'b' : 's') + '" data-k="' + k + '">' +
-      '<div class="an-h"><span class="an-dir ' + (buy ? 'b' : 's') + '">' + (buy ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(s.title) + '</h2>' + chip('Điểm ' + s.score + ' · ' + s.grade, s.grade === 'A+' ? 'ok' : '') + chip(now[0], now[1]) + coreChip(s.model) + '</div>' +
+      '<div class="an-h"><span class="an-dir ' + (buy ? 'b' : 's') + '">' + (buy ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(s.title) + '</h2>' + chip('Điểm ' + s.score + ' · ' + s.grade, s.grade === 'A+' ? 'ok' : '') + chip('<span' + liveAttr(s, res) + '>' + now[0] + '</span>', now[1]) + coreChip(s.model) + '</div>' +
       '<div class="an-trade"><div><i>Entry</i><b>' + f2(s.entry) + '</b></div><div><i>Stop loss</i><b class="no">' + f2(s.sl) + '</b></div><div><i>TP1 · 1:' + s.rr1 + '</i><b class="ok">' + f2(s.tp1) + '</b></div><div><i>TP2 · 1:' + s.rr2 + '</i><b class="ok">' + f2(s.tp2) + '</b></div><div><i>Rủi ro</i><b>$' + f2(s.risk) + SYM.unit + '</b></div></div>' +
       factChips(s.checks) + '<p class="an-line"><b>Hủy nếu:</b> ' + cancel.join(' · ') + '. <b>Quản lý:</b> chốt 50% ở TP1, dời SL về hòa vốn.</p>' +
       figs() +
@@ -364,8 +367,6 @@
   }
   /* ---------- mô hình bổ sung (đã công bố, đã qua kiểm chứng trên đúng mã) ---------- */
   const evText = (a) => a[0] + ' lệnh · thắng ' + a[1] + '% · ' + (a[2] >= 0 ? '+' : '') + a[2] + 'R · PF ' + a[3];
-  const mdOn = () => cfgGet().mdOn !== false;
-  const mdShown = (res) => (!mdOn() || !res.md ? [] : res.md.orders);
   const mdState = (x) => (x.state === 'pending' ? 'Chờ phá mức (' + x.type + ')' + (x.far > 0.04 ? ' · cách giá ' + (x.far * 100).toFixed(0) + '%' : '') : x.state === 'active' ? 'Đã khớp, đang chạy' : 'Đang giữ từ trước');
   const sg = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + 'R';
   /* bảng tổng hợp: mọi lệnh đang gợi ý, cả hai mô hình chính lẫn mô hình bổ sung */
@@ -381,13 +382,21 @@
   const goldTable = () => '<details><summary>' + A.GOLD_TESTS.length + ' hiệu ứng và hệ riêng cho vàng đã thử thêm (không cái nào đạt)</summary><div class="tblw"><table><tr><th>Mô hình</th><th>Giai đoạn 1</th><th>Giai đoạn 2</th><th>Giai đoạn 3</th></tr>' +
     A.GOLD_TESTS.map((r) => '<tr><td>' + esc(r[0]) + '</td>' + r[1].map((p) => '<td><span class="muted">' + esc(p[0]) + '</span><br><span class="' + (p[1] > 0 ? 'up' : 'dn') + '">' + (p[1] > 0 ? '+' : '') + p[1] + 'R</span></td>').join('') + '</tr>').join('') +
     '</table></div><p class="muted">Hệ trong ngày phải đạt ở cả PAXG hai giai đoạn lẫn vàng tương lai thật; hệ chỉ mua khung ngày phải đạt ở cả ba giai đoạn. Các hệ chỉ mua đều lỗ trong 2013–2018 (vàng giảm và đi ngang): phần lãi chủ yếu đến từ việc vàng tăng, không phải từ điểm vào.</p></details>';
-  function allHtml(res) {
-    const md = mdShown(res); if (res.setups.length + md.length < 2) return '';
-    const row = (x, kind, name, ref, tgt, st) => '<tr><td>' + kind + '</td><td><a href="#" data-go="' + ref + '">' + esc(name) + '</a></td><td class="' + (x.dir === 'BUY' ? 'up' : 'dn') + '">' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td>' + tgt + '</td><td><b>' + x.score + '</b> · ' + x.grade + '</td><td>' + esc(st) + '</td></tr>';
-    return '<section class="an-card"><div class="an-h"><h2>Tất cả lệnh đang gợi ý</h2></div><div class="tblw"><table><tr><th>Nhóm</th><th>Mô hình</th><th>Hướng</th><th>Entry</th><th>SL</th><th>Chốt lời</th><th>Điểm</th><th>Trạng thái</th></tr>' +
-      res.setups.map((x, k) => row(x, '<b>Chính</b>' + coreMark(x.model), x.title, 'k' + k, 'TP1 ' + f2(x.tp1) + ' · TP2 ' + f2(x.tp2), (ST[x.state] || [x.state])[0])).join('') +
-      md.map((x, i) => row(x, 'Bổ sung ' + x.tf, x.name, 'm' + i, x.tf === '1D' && (x.key === 'nr7' || x.key === 'wil') ? 'Cuối ngày UTC' : 'Theo quy tắc thoát', mdState(x))).join('') +
-      '</table></div>' + (res.setups.length && md.length ? '<p class="muted an-line">Điểm hai nhóm khác thang.</p>' : '') + '</section>';
+  const RUNNING = ['active', 'tp1'], WAITING = ['pending', 'inzone'];
+  const STX = { pending: 'Chờ giá hồi về', inzone: 'Trong vùng, chờ phản ứng', active: 'Đang chạy', tp1: 'Đã chạm TP1, SL về hòa vốn', tp2: 'Chạm TP2 ✔', sl: 'Chạm SL ✖', tp1be: 'TP1 rồi hòa vốn', missed: 'Lỡ: giá chạy trước khi khớp', expired: 'Hết hạn, chưa khớp' };
+  const rTxt = (r) => (r == null ? '' : ' <b class="' + (r >= 0 ? 'up' : 'dn') + '">' + sg(r) + '</b>');
+  const stTable = (rows) => '<div class="tblw"><table class="an-st-tb"><tr><th>Tín hiệu lúc</th><th>Mô hình</th><th>Hướng</th><th>Entry</th><th>SL</th><th>TP1</th><th>TP2</th><th>Trạng thái</th></tr>' + rows.join('') + '</table></div>';
+  const td = (l, v, c) => '<td data-l="' + l + '"' + (c ? ' class="' + c + '"' : '') + '>' + v + '</td>';
+  const stRow = (when, name, x, tp1, tp2, state) => '<tr>' + td('Tín hiệu lúc', when) + td('Mô hình', name) + td('Hướng', '<b>' + side(x.dir) + '</b>', x.dir === 'BUY' ? 'up' : 'dn') + td('Entry', f2(x.entry)) + td('SL', f2(x.sl)) + td('TP1', tp1) + td('TP2', tp2) + td('Trạng thái', state) + '</tr>';
+  const when = (t) => hmVN(t) + ' ' + dmVN(t);
+  /* ba nhóm rõ ràng: chờ khớp, đang chạy, đã kết thúc. Lệnh đang chạy lâu (không còn thẻ chi tiết) vẫn nằm ở nhóm đang chạy. */
+  function statusHtml(res) {
+    if (!res.bias || res.closed) return '';
+    const row = (s) => { const k = res.setups.indexOf(s), nm = (s.model === 'PA' ? 'Price Action' : 'ICT') + coreMark(s.model); return stRow(when(res.m15[s.ready].t + 900000), (k >= 0 ? '<a href="#" data-go="k' + k + '">' + nm + '</a>' : nm), s, f2(s.tp1), f2(s.tp2), '<span' + liveAttr(s, res) + '>' + (STX[s.state] || s.state) + (s.fill != null ? rTxt(s.R) : '') + '</span>'); };
+    const wait = res.setups.filter((x) => WAITING.indexOf(x.state) >= 0), run = res.setups.concat(res.recent).filter((x) => RUNNING.indexOf(x.state) >= 0), done = res.recent.filter((x) => RUNNING.indexOf(x.state) < 0 && WAITING.indexOf(x.state) < 0);
+    const group = (cls, title, list) => '<div class="an-grp ' + cls + '"><h3>' + title + ' (' + list.length + ')</h3>' + (list.length ? stTable(list.map(row)) : '<p class="an-line muted">Không có.</p>') + '</div>';
+    return '<section class="an-card"><div class="an-h"><h2>Trạng thái lệnh</h2></div>' + group('g-wait', '⏳ Chờ khớp', wait) + group('g-run', '▶ Đang chạy', run) +
+      '<details class="an-keep an-grp g-done" data-id="recent"><summary><b>■ Đã kết thúc (' + done.length + ')</b></summary>' + (done.length ? stTable(done.map(row)) : '<p class="an-line muted">Không có.</p>') + '</details></section>';
   }
   function mdCard(x, i) {
     const m = A.MODELS[x.key], ev = m.ev[SYM.id];
@@ -407,15 +416,12 @@
   /* phần chính: chỉ lệnh và vị thế của mô hình bổ sung; mã không có mô hình đạt thì không hiện gì */
   function modelsHtml(res) {
     const md = res.md; if (!md || !md.list.length) return '<div id="an-md"></div>';
-    let h = '<section class="an-card an-mdhead"><div class="an-h"><h2>Mô hình bổ sung</h2>' + chip('Nhóm xu hướng yếu từ 2024', 'warn') + '<label class="an-auto an-r"><input type="checkbox" id="an-mdon"' + (mdOn() ? ' checked' : '') + '> Hiện</label></div>';
-    if (md.error) h += '<p class="an-warn">Không tính được: ' + esc(md.error) + '</p>';
-    if (mdOn()) {
-      if (md.held) h += '<p class="an-warn">Quanh giờ tin mạnh: giữ lại ' + md.held + ' lệnh.</p>';
-      else if (!md.orders.length) h += '<p class="muted an-line">Không có lệnh chờ hay lệnh mới khớp.</p>';
-      if (md.holding.length) h += '<h3>Vị thế xu hướng đang chạy (không đuổi)</h3><div class="tblw"><table><tr><th>Mô hình</th><th>Hướng</th><th>Vào ngày</th><th>Giá vào</th><th>SL / thoát</th><th>Lời/lỗ</th><th>Điểm</th></tr>' +
-        md.holding.map((x) => '<tr><td title="' + esc(x.exitRule) + '">' + esc(x.name) + '</td><td class="' + (x.dir === 'BUY' ? 'up' : 'dn') + '">' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + new Date(x.since).toLocaleDateString('vi-VN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td class="' + (x.R >= 0 ? 'up' : 'dn') + '">' + sg(x.R) + '</td><td>' + x.score + '</td></tr>').join('') + '</table></div>';
-    }
-    return '<div id="an-md">' + h + '</section>' + mdShown(res).map(mdCard).join('') + '</div>';
+    const wait = md.orders.filter((x) => x.state === 'pending'), run = md.orders.filter((x) => x.state !== 'pending').concat(md.holding);
+    const row = (x) => stRow(x.since != null ? dmVN(x.since) : (x.state === 'active' ? 'Hôm nay' : '–'), esc(short(x.name)), x, 'theo quy tắc thoát', '–', (x.state === 'pending' ? x.type + (x.far > 0.04 ? ' · cách giá ' + (x.far * 100).toFixed(0) + '%' : '') : x.state === 'active' ? 'Đã khớp hôm nay' : 'Đang giữ từ trước') + rTxt(x.state === 'pending' ? null : x.R) + ' · điểm ' + x.score);
+    const group = (cls, title, list) => '<div class="an-grp ' + cls + '"><h3>' + title + ' (' + list.length + ')</h3>' + (list.length ? stTable(list.map(row)) : '<p class="an-line muted">Không có.</p>') + '</div>';
+    return '<div id="an-md"><section class="an-card"><details class="an-keep" data-id="md"><summary><b>Mô hình bổ sung (khung ngày, giữ lâu)</b> · ' + wait.length + ' chờ khớp · ' + run.length + ' đang chạy</summary>' +
+      (md.held ? '<p class="an-warn">Quanh giờ tin mạnh: giữ lại ' + md.held + ' lệnh.</p>' : '') + (md.error ? '<p class="an-warn">Không tính được: ' + esc(md.error) + '</p>' : '') +
+      '<p class="an-line muted">Hệ thống riêng, độc lập với ICT / Price Action; nhóm theo xu hướng yếu từ 2024.</p>' + group('g-wait', '⏳ Chờ khớp', wait) + group('g-run', '▶ Đang chạy (không đuổi)', run) + md.orders.map(mdCard).join('') + '</details></section></div>';
   }
   /* phần tham khảo (gập): số liệu kiểm chứng, mô hình đã thử */
   function evidenceHtml(res) {
@@ -446,13 +452,6 @@
       d.addEventListener('toggle', () => { if (d.open) { MDOPEN.add(d.dataset.id); open(); } else MDOPEN.delete(d.dataset.id); });
       if (MDOPEN.has(d.dataset.id)) { d.open = true; open(); }
     });
-    const on = $('#an-mdon', out);
-    if (on) on.onchange = () => { cfgSet({ mdOn: on.checked }); const box = $('#an-md', out), all = $('#an-all', out); for (let i = LVR.length - 1; i >= 0; i--) if (LVR[i].extra) { clearTimeout(LVR[i].timer); LVR.splice(i, 1); } box.outerHTML = modelsHtml(res); if (all) all.innerHTML = allHtml(res); modelsWire(out, F, res); };
-  }
-  function recentHtml(res) {
-    if (!res.recent.length) return '';
-    return '<section class="an-card"><details class="an-keep" data-id="recent"><summary><b>Setup đã qua (' + res.recent.length + ')</b></summary><div class="tblw"><table><tr><th>Thời điểm tín hiệu</th><th>Mô hình</th><th>Hướng</th><th>Entry</th><th>SL</th><th>TP1</th><th>Điểm</th><th>Diễn biến</th></tr>' +
-      res.recent.map((s) => '<tr><td>' + esc(A.tm(res.m15[s.ready].t)) + '</td><td>' + s.model + '</td><td>' + (s.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + f2(s.entry) + '</td><td>' + f2(s.sl) + '</td><td>' + f2(s.tp1) + '</td><td>' + s.score + '</td><td>' + esc((ST[s.state] || [s.state])[0]) + '</td></tr>').join('') + '</table></div></details></section>';
   }
   function methodHtml() {
     return '<h3>Quy tắc ra quyết định</h3>' +
@@ -505,7 +504,24 @@
       else { setStatus('Nến 15m vừa đóng: bấm "Phân tích ngay" để cập nhật phân tích với nến mới.', 'ok'); const b = $('#an-run'); if (b) b.classList.add('pulse'); }
     }
   }
+  /* đối chiếu lệnh đang chờ / đang chạy với cây nến 15m đang hình thành, để biết ngay lệnh nào đã hỏng hay đã khớp mà không phải đợi nến đóng */
+  function liveStatus() {
+    const k = LV.last.m15; if (!VIEW || ASOF || !k) return; const hi = k.h + LV.off, lo = k.l + LV.off, notes = [];
+    [].forEach.call(VIEW.querySelectorAll('[data-live]'), (el) => {
+      const a = el.dataset; if (k.t < +a.now) return; const buy = +a.d === 1, back = (p) => (buy ? lo <= p : hi >= p), gain = (p) => (buy ? hi >= p : lo <= p);
+      let txt = null, cls = '';
+      if (a.live === 'w') { if (back(+a.e)) { txt = back(+a.sl) ? 'Đã khớp rồi chạm SL ✖' : '▶ Giá đã chạm mức vào'; cls = back(+a.sl) ? 'dn' : 'up'; } else if (gain(+a.t1)) { txt = '⛔ Đã chạm TP1 trước khi khớp: bỏ lệnh'; cls = 'dn'; } }
+      else if (back(+a.sl)) { txt = 'Đã chạm SL ✖'; cls = 'dn'; } else if (gain(+a.t2)) { txt = 'Đã chạm TP2 ✔'; cls = 'up'; }
+      if (txt && !el.dataset.done) { el.dataset.done = '1'; if (cls === 'dn') el.dataset.dead = '1'; el.className = cls; el.textContent = txt + ' (giá trực tiếp)'; }
+      if (el.dataset.done) { const line = 'Lệnh ' + a.tag + ': ' + el.textContent; if (notes.indexOf(line) < 0) notes.push(line); }
+    });
+    const v = VIEW.querySelector('#an-vlive'); if (v) v.textContent = notes.join(' · ');
+    // mọi lệnh đang hiệu lực đều đã hỏng theo giá trực tiếp: không để tiêu đề tiếp tục báo "có lệnh"
+    const all = VIEW.querySelectorAll('[data-live]'), head = VIEW.querySelector('.an-v-head'), card = VIEW.querySelector('.an-verdict');
+    if (head && all.length && VIEW.querySelectorAll('[data-live][data-dead]').length === all.length && /^CÓ LỆNH/.test(head.textContent)) { head.textContent = 'KHÔNG VÀO LỆNH'; card.className = 'an-card an-verdict v-warn'; }
+  }
   function liveUi() {
+    liveStatus();
     const e = $('#an-live'); if (!e) return; if (!LV.on) { e.className = 'an-live'; e.innerHTML = ''; return; }
     const ok = LV.lastMsg && Date.now() - LV.lastMsg < 15000;
     e.className = 'an-live' + (ok ? ' on ' + (LV.dir > 0 ? 'up' : LV.dir < 0 ? 'dn' : '') : ''); e.innerHTML = '<i></i>' + (ok ? 'Trực tiếp · <b>' + f2(LV.price + LV.off) + '</b>' : 'Đang kết nối giá trực tiếp…');
@@ -542,11 +558,10 @@
       try { res.md = A.models({ m15: F.m15, h4: F.h4L, d1: F.d1 }, { sym: SYM.id, news: res.news, bias: res.bias }); } catch (e) { console.error(e); res.md = { list: [], orders: [], holding: [], notes: [], held: 0, error: e.message || String(e) }; }
       let h = T ? '<div class="an-past"><b>Đang xem lại quá khứ</b><button type="button" class="btn pri sm" id="an-back">⟲ Về hiện tại</button></div>' : '';
       h += verdictHtml(res);
-      h += '<div id="an-all">' + allHtml(res) + '</div>';
+      h += statusHtml(res);
       if (res.setups.length) res.setups.forEach((s, k) => (h += setupHtml(s, res, k)));
-      h += modelsHtml(res);
       if (!res.setups.length && !res.closed) h += emptyHtml();
-      h += recentHtml(res) + refHtml(res);
+      h += modelsHtml(res) + refHtml(res);
       out.innerHTML = h;
       if (res.bias) { if (res.setups.length) res.setups.forEach((s, k) => charts($('[data-k="' + k + '"]', out), F, res, s)); else if (!res.closed) charts($('[data-k=none]', out), F, res, null); }
       modelsWire(out, F, res); keepOpen(out);
