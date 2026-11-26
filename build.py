@@ -17,7 +17,7 @@ meta2 = "\n".join(l for l in meta.split("\n") if "assets/style.css" not in l and
 def inline(m):
     js = (root / m.group(1)).read_text(encoding="utf-8").replace("</script", "<\\/script")
     return "<script>\n" + js + "\n</script>"
-body2 = re.sub(r'<script src="(assets/[^"]+)"></script>', inline, body)
+body2 = re.sub(r'<script src="((?:assets|live)/[^"]+)"></script>', inline, body)
 out = head + meta2 + "\n<style>\n" + css + "\n</style>\n</head>\n<body>\n" + body2 + "\n</body>\n</html>\n"
 (root / "dist").mkdir(exist_ok=True)
 (root / "dist/ICT-offline.html").write_text(out, encoding="utf-8")

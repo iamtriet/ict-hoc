@@ -194,7 +194,7 @@
     { n: 'London Close', s: 600, e: 720 }, { n: 'NY PM', s: 810, e: 960 },
   ];
   const SB = [{ n: 'SB London', s: 180, e: 240 }, { n: 'SB NY AM', s: 600, e: 660 }, { n: 'SB NY PM', s: 840, e: 900 }];
-  const LN = { ann: 'Chú thích', swing: 'Swing', struct: 'BOS / MSS', fvg: 'FVG', ob: 'Order Block', liq: 'Thanh khoản', pd: 'Premium / Discount', kz: 'Killzone', sb: 'Silver Bullet' };
+  const LN = { tpsl: 'TP/SL', bias: 'Bias', ann: 'Chú thích', swing: 'Swing', struct: 'BOS / MSS', fvg: 'FVG', ob: 'Order Block', liq: 'Thanh khoản', pd: 'Premium / Discount', kz: 'Killzone', sb: 'Silver Bullet' };
   const nice = (span, cnt) => { const raw = span / cnt, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; };
   const CW = { tx: 6.1, 'tx sm': 5.5, 'tx b': 6.8, sw: 5.6 };
 
@@ -215,7 +215,7 @@
     } else tfb.style.display = 'none';
     if (o.noTg) { tg.style.display = 'none'; }
     avail.forEach((k) => {
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'tg' + (L.has(k) ? ' on' : ''); b.textContent = LN[k] || k; b.setAttribute('aria-pressed', L.has(k));
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'tg' + (L.has(k) ? ' on' : ''); b.textContent = (o.names && o.names[k]) || LN[k] || k; b.dataset.k = k; b.setAttribute('aria-pressed', L.has(k));
       b.onclick = () => { L.has(k) ? L.delete(k) : L.add(k); b.classList.toggle('on', L.has(k)); b.setAttribute('aria-pressed', L.has(k)); draw(); if (o.onLayer) o.onLayer(k, L.has(k)); };
       tg.appendChild(b);
     });
@@ -238,7 +238,8 @@
       let hi = -1e9, lo = 1e9;
       for (let i = x0; i < i1; i++) { hi = Math.max(hi, S.bars[i].h); lo = Math.min(lo, S.bars[i].l); }
       if (i1 <= x0) { hi = S.bars[0].h; lo = S.bars[0].l; }
-      if (o.pos) [o.pos.sl, o.pos.tp, o.pos.tp1, o.pos.tp2, o.pos.entry].forEach((p) => { if (p != null) { hi = Math.max(hi, p); lo = Math.min(lo, p); } }); if (o.fit) o.fit.forEach((p) => { hi = Math.max(hi, p); lo = Math.min(lo, p); });
+      const posOn = !!o.pos && (!o.posLayer || L.has(o.posLayer)); // o.posLayer: hộp lệnh đang xem ẩn / hiện theo lớp đó
+      if (posOn) [o.pos.sl, o.pos.tp, o.pos.tp1, o.pos.tp2, o.pos.entry].forEach((p) => { if (p != null) { hi = Math.max(hi, p); lo = Math.min(lo, p); } }); if (o.fit) o.fit.forEach((p) => { hi = Math.max(hi, p); lo = Math.min(lo, p); });
       const span = Math.max(hi - lo, S.vol * 8), mid = (hi + lo) / 2; hi = mid + span * 0.6; lo = mid - span * 0.6; // chừa chỗ cho nhãn
       const px = (i) => m.l + (i - x0 + 0.5) * slot, py = (p) => m.t + ((hi - p) / (hi - lo)) * plotH;
       const D = L.size ? ICT.detect(S, i1) : null;
@@ -253,14 +254,40 @@
       /* --- bộ tránh chồng: nến + nhãn đã đặt --- */
       const occC = []; for (let i = x0; i < i1; i++) { const b = S.bars[i], cx = px(i); occC.push({ x1: cx - bw / 2 - 1.5, x2: cx + bw / 2 + 1.5, y1: py(b.h) - 1.5, y2: py(b.l) + 1.5 }); }
       const occL = [], reqs = [];
-      const hit = (r) => {
+      const onCandle = (r) => {
         const a = Math.max(0, Math.floor((r.x1 - m.l) / slot) - 1), z = Math.min(occC.length - 1, Math.ceil((r.x2 - m.l) / slot) + 1);
         for (let k = a; k <= z; k++) { const c = occC[k]; if (c && r.x1 < c.x2 && r.x2 > c.x1 && r.y1 < c.y2 && r.y2 > c.y1) return true; }
+        return false;
+      };
+      const hit = (r) => {
+        if (onCandle(r)) return true;
         for (let k = 0; k < occL.length; k++) { const q = occL[k]; if (r.x1 < q.x2 + 2 && r.x2 > q.x1 - 2 && r.y1 < q.y2 + 1 && r.y2 > q.y1 - 1) return true; }
         return false;
       };
       const req = (o2) => { o2.pri = o2.pri == null ? 1 : o2.pri; o2.w = (o2.text.length * (CW[o2.tc || 'tx'] || 6.1) + (o2.kind === 'pill' ? 12 : 4)) * k; o2.h = (o2.kind === 'pill' ? 17 : (o2.tc === 'tx sm' || o2.tc === 'sw' ? 12 : 14)) * k; reqs.push(o2); };
+      /* nhãn mức lệnh (SL, TP) chỉ nằm trong khung của nó: một dòng, không vừa thì hai dòng, rồi xoay dọc, rồi chỉ còn "SL" / "TP1"; hết chỗ thì bỏ.
+         Chữ không có viền nên ưu tiên chỗ trống nến; không có thì mới đè lên nến */
+      function placeInside(q) {
+        const b = q.box, bw = b.x2 - b.x1, bh = b.y2 - b.y1, cx = (b.x1 + b.x2) / 2, cy2 = (b.y1 + b.y2) / 2, words = q.text.split(' '), lh = q.h * 0.92;
+        const forms = [{ w: q.w, h: q.h }];
+        if (words.length === 2) forms.push({ w: Math.max(words[0].length, words[1].length) * (CW[q.tc] || 6.1) * k + 2, h: lh * 2, lines: words });
+        forms.push({ w: q.h, h: q.w, rot: 1 });
+        if (words.length === 2) forms.push({ w: words[0].length * (CW[q.tc] || 6.1) * k + 2, h: q.h, text: words[0], brief: 1 });
+        const fits = forms.filter((f) => f.w <= bw + 2 && f.h <= bh + 2);
+        for (const group of [fits.filter((f) => !f.rot && !f.brief), fits.filter((f) => f.rot), fits.filter((f) => f.brief)]) for (const clean of [true, false]) for (const f of group) {
+          const dx = Math.max(0, (bw - f.w) / 2 - 1), dy = Math.max(0, (bh - f.h) / 2 - 1), xs = [0];
+          for (let d = 8; d < dx; d += 8) xs.push(-d, d);
+          xs.push(-dx, dx);
+          for (const fy of [0, -1, 1, -0.5, 0.5, -0.75, 0.75, -0.25, 0.25]) for (const ox of xs) {
+            const r = { x1: cx + ox - f.w / 2, y1: cy2 + fy * dy - f.h / 2, lines: f.lines, rot: f.rot, text: f.text, lh }; r.x2 = r.x1 + f.w; r.y2 = r.y1 + f.h;
+            if (occL.some((p) => r.x1 < p.x2 + 1 && r.x2 > p.x1 - 1 && r.y1 < p.y2 && r.y2 > p.y1) || (clean && onCandle(r))) continue;
+            occL.push(r); return r;
+          }
+        }
+        return null;
+      }
       function place(q) {
+        if (q.inside) return placeInside(q);
         const w = q.w, h = q.h, cands = [];
         if (q.box) { // nhãn nằm giữa vùng; nếu vướng nến/nhãn khác thì trượt ngang trong vùng, gần tâm nhất
           const b = q.box, cx = (b.x1 + b.x2) / 2, y1 = (b.y1 + b.y2) / 2 - h / 2, half = Math.max(0, (b.x2 - b.x1 - w) / 2), offs = [0];
@@ -275,7 +302,7 @@
           if (q.near) { // biểu đồ giá thật: nhãn phải nằm sát vùng của nó (ngay trên hoặc dưới), hết chỗ thì bỏ chứ không trôi đi xa
             const taken = (r) => occL.some((p) => r.x1 < p.x2 + 2 && r.x2 > p.x1 - 2 && r.y1 < p.y2 + 1 && r.y2 > p.y1 - 1);
             for (const busy of [hit, taken]) // lượt đầu né cả nến; lượt sau chấp nhận đè nến nhưng không đè nhãn khác
-              for (let j = 0; j < 3; j++) for (const d of q.out === 1 ? [1, -1] : [-1, 1]) for (const dx of [0, -w / 2, w / 2]) {
+              for (let j = 0; j < 3; j++) for (const d of [-1, 1]) for (const dx of [0, -w / 2, w / 2]) {
                 const x1 = clamp(cx - w / 2 + dx, 2, right - w), y = d < 0 ? b.y1 - h - 1 - j * h * 0.9 : b.y2 + 1 + j * h * 0.9, r = { x1, y1: y, x2: x1 + w, y2: y + h };
                 if (y >= 2 && y + h <= H - m.b - 2 && !busy(r)) { occL.push(r); return r; }
               }
@@ -371,8 +398,9 @@
         s += '<g class="a ' + c + '"><line class="ln dash" x1="' + xa + '" x2="' + xe + '" y1="' + y + '" y2="' + y + '"/></g>';
         req({ text: e.k, ax: (xa + xe) / 2, ay: y, anchor: 'middle', side: e.dir === 1 ? -1 : 1, tc: 'tx b', g: 'a ' + c, pri: 1 });
       });
-      if (L.has('ann') && !o.hideAnn) {
+      if (!o.hideAnn) {
         S.ann.forEach((a) => {
+          if (!L.has(a.layer || 'ann')) return; // mỗi chú thích thuộc một lớp (mặc định là "ann")
           try {
             const keys = ['hline', 'zone', 'range', 'vband', 'fib'].indexOf(a.t) >= 0 ? ['at', 'x1'] : ['at', 'x1', 'x2'], xs = [];
             keys.forEach((k) => { if (a[k] != null && a[k] !== 'end') xs.push(S0.X(a[k])); });
@@ -397,7 +425,8 @@
         if (a.t === 'zone') {
           const ia = Math.max(S.X(a.x1, 0), x0), ie = a.x2 == null || a.x2 === 'end' ? null : Math.min(S.X(a.x2, 2), i1 - 1), ya = py(S.Y(a.y1)), yb = py(S.Y(a.y2)), xa = px(ia) - slot / 2, xe = ie == null ? right : px(ie) + slot / 2, y = cy(Math.min(ya, yb)), h = Math.max(2, cy(Math.max(ya, yb)) - y), mid = (ya + yb) / 2;
           if (gone(a) || off(ya, yb)) return '';
-          if (a.text && !stub(S.X(a.x1, 0) < x0, Math.min(ya, yb) < m.t || Math.max(ya, yb) > base, xe - xa, h, a.text)) req({ text: a.text, box: { x1: xa, x2: Math.max(xa + 2, xe), y1: y, y2: y + h }, tc: 'tx sm', g, pri: a.out ? 0.5 : 1, near: o.clip, out: a.out }); // mức của lệnh được xếp chỗ trước nhãn cấu trúc
+          // mức của lệnh (a.inside) nằm trong khung và được xếp chỗ trước nhãn cấu trúc
+          if (a.text && (a.inside || !stub(S.X(a.x1, 0) < x0, Math.min(ya, yb) < m.t || Math.max(ya, yb) > base, xe - xa, h, a.text))) req({ text: a.text, box: { x1: xa, x2: Math.max(xa + 2, xe), y1: y, y2: y + h }, tc: 'tx sm', g, pri: a.inside ? 0.5 : 1, near: o.clip, inside: a.inside });
           return '<g class="' + g + '"><rect class="fl" fill-opacity="' + (a.op || 0.2) + '" x="' + xa + '" y="' + y + '" width="' + Math.max(2, xe - xa) + '" height="' + h + '"/><rect class="ln" fill="none" stroke-opacity=".7" x="' + xa + '" y="' + y + '" width="' + Math.max(2, xe - xa) + '" height="' + h + '"/>' + (a.ce && !off(mid, mid) ? '<line class="ln dot" x1="' + xa + '" x2="' + xe + '" y1="' + mid + '" y2="' + mid + '"/>' : '') + '</g>';
         }
         if (a.t === 'line' || a.t === 'arrow') {
@@ -435,16 +464,20 @@
         if (q.kind === 'pill') {
           const below = r.y1 > q.ay, lx = clamp(q.ax, r.x1 + 4, r.x2 - 4), ly = below ? r.y1 : r.y2;
           s += '<g class="' + q.g + '"><line class="ln" stroke-opacity=".55" x1="' + q.ax + '" y1="' + q.ay + '" x2="' + lx + '" y2="' + ly + '"/><rect class="pl" x="' + r.x1 + '" y="' + r.y1 + '" width="' + q.w + '" height="' + q.h + '" rx="3"/><text class="tx" x="' + (r.x1 + q.w / 2) + '" y="' + (r.y1 + 12 * k) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
+        } else if (q.inside) { // chữ màu mực, không viền
+          const mx = (r.x1 + r.x2) / 2, my = (r.y1 + r.y2) / 2, T = (t, x, y, extra) => '<text class="' + q.tc + ' lvl" x="' + x + '" y="' + y + '" text-anchor="middle"' + (extra || '') + '>' + esc(t) + '</text>';
+          s += '<g class="' + q.g + '">' + (r.lines ? T(r.lines[0], mx, r.y1 + r.lh - 3 * k) + T(r.lines[1], mx, r.y1 + 2 * r.lh - 3 * k) : r.rot ? T(q.text, mx, my + 3.5 * k, ' transform="rotate(-90 ' + mx + ' ' + my + ')"') : T(r.text || q.text, mx, r.y2 - 3 * k)) + '</g>';
         } else if (r.inn) s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl in" x="' + ((r.x1 + r.x2) / 2) + '" y="' + (r.y2 - 3 * k) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
         else s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl" x="' + (r.x1 + 2) + '" y="' + (r.y2 - 3 * k) + '">' + esc(q.text) + '</text></g>';
       });
-      if (o.pos) {
+      if (posOn) {
         const p = o.pos, xa = Math.min(px(p.i), right - 30), full = p.tp2 != null, tpTop = full ? p.tp2 : p.tp;
         const rect = (ya, yb, cls) => '<rect class="pbx ' + cls + '" x="' + xa + '" y="' + Math.min(py(ya), py(yb)) + '" width="' + (right - xa) + '" height="' + Math.abs(py(ya) - py(yb)) + '"/>';
-        const mk = (y, cls, t, price) => { const yy = py(y); return '<line class="ps ' + cls + '" x1="' + xa + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax ps-t ' + cls + 't" x="' + (right - 4) + '" y="' + (yy - 3) + '" text-anchor="end">' + t + '</text><rect class="ptag ' + cls + 'g" x="' + (right + 1) + '" y="' + (yy - 7 * k) + '" width="' + (m.r - 3) + '" height="' + 14 * k + '" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5 * k) + '" text-anchor="middle">' + S.fmt(price) + '</text>'; };
+        const mk = (y, cls, t, price) => { const yy = py(y), below = o.clip && py(p.entry) > yy + 1; return '<line class="ps ' + cls + '" x1="' + xa + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax ps-t ' + cls + 't' + (o.clip ? ' lvl' : '') + '" x="' + (right - 4) + '" y="' + (below ? yy + 11 * k : yy - 3) + '" text-anchor="end">' + t + '</text><rect class="ptag ' + cls + 'g" x="' + (right + 1) + '" y="' + (yy - 7 * k) + '" width="' + (m.r - 3) + '" height="' + 14 * k + '" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5 * k) + '" text-anchor="middle">' + S.fmt(price) + '</text>'; };
         s += rect(p.entry, tpTop, 'tp') + rect(p.entry, p.sl, 'sl');
         s += mk(p.sl, 'psl', 'SL' + (p.rrSl ? ' ' + p.rrSl : ''), p.sl);
-        if (full) s += mk(p.tp2, 'ptp', 'TP2' + (p.rr2 ? ' · 1:' + p.rr2 : ''), p.tp2) + mk(p.tp1, 'ptp', 'TP1' + (p.rr1 ? ' · 1:' + p.rr1 : ''), p.tp1);
+        if (full && p.tp1 === p.tp2) s += mk(p.tp2, 'ptp', 'TP1 = TP2' + (p.rr2 ? ' · 1:' + p.rr2 : ''), p.tp2); // trùng giá: một nhãn, khỏi chồng lên nhau
+        else if (full) s += mk(p.tp2, 'ptp', 'TP2' + (p.rr2 ? ' · 1:' + p.rr2 : ''), p.tp2) + mk(p.tp1, 'ptp', 'TP1' + (p.rr1 ? ' · 1:' + p.rr1 : ''), p.tp1);
         else s += mk(p.tp, 'ptp', 'TP', p.tp);
         s += mk(p.entry, 'pe', (p.dir === 1 ? 'BUY ' : 'SELL ') + S.fmt(p.entry), p.entry);
       }
@@ -471,7 +504,7 @@
     const ch = {
       S: S0, o, draw, layers: L,
       setV(n) { v = n; draw(); }, getV() { return v; },
-      setLayer(k, on) { on ? L.add(k) : L.delete(k); [].forEach.call(tg.children, (b) => { if ((LN[k] || k) === b.textContent) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); } }); draw(); },
+      setLayer(k, on) { on ? L.add(k) : L.delete(k); [].forEach.call(tg.children, (b) => { if (b.dataset.k === k) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); } }); draw(); },
       setOpt(k, val) { o[k] = val; draw(); },
       destroy() { if (ro) ro.disconnect(); },
     };

@@ -2,6 +2,7 @@
    Dùng đúng lõi phân tích của trang web (assets/analyst-core.js). Biến môi trường:
    TG_BOT_TOKEN, TG_CHAT_ID  (bắt buộc để gửi; đặt trong GitHub Secrets)
    MIN_SCORE (mặc định 55) · SYMBOLS (mặc định XAUUSD,BTCUSD) · MODE both|ict|pa · PRICE_OFFSET spot|none|số · SITE_URL
+   STAGES (mặc định sweep,swing,cancel,order; thêm plan để báo mọi lần đổi mốc chờ; off để tắt) – tin từng bước, xem scripts/stages.js
    DRY=1 chỉ in ra + ghi ảnh vào ./out, không gửi · TEST=1 gửi tin thử · FORCE=1 bỏ qua chống trùng */
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm');
@@ -13,8 +14,11 @@ const STATE = path.join(ROOT, '.state', 'state.json');
 
 /* ---- nạp lõi phân tích ---- */
 const win = { setTimeout, clearTimeout, setInterval, clearInterval, fetch, AbortController, WebSocket: typeof WebSocket !== 'undefined' ? WebSocket : undefined }; win.window = win; win.console = console; vm.createContext(win);
-['assets/engine.js', 'assets/deriv.js', 'assets/coinbase.js', 'assets/analyst-core.js', 'assets/analyst-models.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
-const A = win.ICT.analyst, msg = require('./message.js')(A);
+['assets/engine.js', 'assets/deriv.js', 'assets/coinbase.js', 'assets/analyst-core.js', 'assets/analyst-models.js', 'live/signals.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
+const A = win.ICT.analyst, msg = require('./message.js')(A), steps = require('./stages.js')(A, win.ICT.signals);
+const STAGES = new Set((env.STAGES || 'sweep,swing,cancel,order').toLowerCase().split(/[\s,]+/).filter(Boolean)); if (STAGES.has('off')) STAGES.clear();
+/* loại tin từng bước nào được gửi */
+const wanted = (e) => (e.type === 'sweep' ? STAGES.has('sweep') : e.type === 'order' ? STAGES.has('order') : e.type === 'plan' ? STAGES.has('plan') || (STAGES.has('cancel') && (e.turned || !!e.broke)) : e.type === 'deeper' ? STAGES.has('plan') : STAGES.has('cancel'));
 const SYMBOLS = (env.SYMBOLS || 'XAUUSD,BTCUSD').split(/[\s,]+/).map((x) => x.toUpperCase()).filter((x) => A.SYMS[x]);
 if (!SYMBOLS.length) SYMBOLS.push('XAUUSD');
 let f2 = (x) => (+x).toFixed(2); // số lẻ đổi theo mã đang xử lý
@@ -126,6 +130,7 @@ async function sendTest(r, st) {
   const clean = (m) => (env.TG_BOT_TOKEN ? String(m).split(env.TG_BOT_TOKEN).join('***') : String(m));
   try {
     if (!r) throw new Error('không tìm được setup mẫu để vẽ');
+    for (const e of sampleSteps(r.sample)) { const t = msg.stage(e, { cfg: r.sample.cfg, site: SITE }); if (t) await say('🧪 <b>TIN THỬ, không phải tín hiệu</b>\n' + t); }
     const how = await sendImages(r.sample, ('🧪 <b>TIN THỬ, không phải tín hiệu</b>\n' + msg.setup(r.sample.s, { cfg: r.sample.cfg, res: r.sample.res, events: EV, site: SITE })).slice(0, 4000));
     status.result = how.mode; if (how.note) status.detail = clean(how.note);
     if (how.mode !== 'album') await say('⚠️ Không dựng được album 4 khung, đã dùng ' + (how.mode === 'photo' ? 'ảnh đơn' : 'tin chữ') + ': ' + esc(clean(how.note || 'không rõ')));
@@ -136,6 +141,14 @@ async function sendTest(r, st) {
     if (st.cal && st.cal.at) files['calendar.json'] = JSON.stringify({ updated: new Date(st.cal.at).toISOString(), source: 'faireconomy', until: st.cal.until, events: st.cal.events });
     try { publish(files); } catch (e) { console.log('::warning::' + e.message); }
   }
+}
+
+/* mẫu các tin từng bước, dựng từ setup mẫu (chỉ dùng cho tin thử) */
+function sampleSteps(job) {
+  const s = job.s, F = job.F, dir = s.dir === 'BUY' ? 1 : -1, at = (i) => (F.m15[i] ? F.m15[i].t : F.m15[F.m15.length - 1].t);
+  const sweep = { dir, t: at(s.sweep ? s.sweep.i : s.ready), p: s.sweep ? s.sweep.p : s.level, name: s.sweep ? s.sweep.name : 'mốc bị phá', ext: s.sweep ? s.sweep.ext : s.sl, mss: s.mss ? s.mss.p : null };
+  const order = { model: s.model, dir: s.dir, entry: s.entry, sl: s.sl, tp1: s.tp1, tp2: s.tp2 };
+  return [{ type: 'sweep', dir, price: job.res.price, sweep, f: { entry: s.entry, sl: s.sl, tp1: s.tp1, tp2: s.tp2, atr: s.atr } }, { type: 'order', dir, price: job.res.price, order, state: 'missed' }];
 }
 
 /* ---- lịch tin mạnh (USD, High): tải mỗi giờ từ lịch công khai, lưu trong trạng thái, đăng lên nhánh data cho trang web ---- */
@@ -194,6 +207,10 @@ async function scan(id, st) {
   if (TEST || REQ) { const label = 'ẢNH THỬ: setup đang theo dõi hoặc đã qua, không phải tín hiệu mới', demo = res.setups[0] || res.recent[0];
     if (demo) out.sample = job(demo, label); else { const base = job(null, label), p = pastDemo(base.F, base.opt); if (p) out.sample = Object.assign(base, { res: p.res, s: p.s, F: p.F }); } }
   if (ageMin > 45 && !FORCE) { console.log('Dữ liệu cũ hơn 45 phút (thị trường nghỉ hoặc nguồn chậm): bỏ qua.'); return out; }
+  // từng bước của lệnh: mốc chờ, cú quét, hủy kế hoạch (xét trên nến đã đóng)
+  st.stage = st.stage || {}; const mem = (st.stage[id] = st.stage[id] || {}), follow = STAGES.size > 0 && (env.MODE || cfg.mode || 'both') !== 'pa';
+  const tell = async (list) => { for (const e of list) { if (!wanted(e)) continue; const t = msg.stage(e, { cfg, site: SITE }); if (!t) continue; console.log('[' + id + '] bước:', e.type, e.state || ''); await say(backup ? t + '\n⚠️ Đang dùng giá dự phòng ' + instead.replace(' (dự phòng)', '') : t); } };
+  if (follow) await tell(steps.step(mem, id, F, res, { swing: STAGES.has('swing') }));
   let sent = 0;
   for (const s of res.setups) {
     if (s.score < MIN) continue;
@@ -204,11 +221,14 @@ async function scan(id, st) {
     const live = await liveOf(cfg, off, res.price, d.feed);
     // quy tắc hủy: giá đã chạm TP1 mà chưa khớp thì lệnh không còn giá trị, không gửi
     if (s.model === 'ICT' && msg.progress(s, live) >= 1 && !FORCE) { st.sent[key] = Date.now(); console.log('Bỏ qua', key, s.dir, s.score, ': giá', live, 'đã chạm TP1', s.tp1, 'trước khi khớp'); continue; }
-    const text = msg.setup(s, { cfg, res, events: EV, site: SITE, live, note: backup ? 'Đang dùng giá dự phòng ' + instead.replace(' (dự phòng)', '') + ', không phải ' + main.name : '' }); // một tin duy nhất: chú thích đi cùng album ảnh
+    const text = msg.setup(s, { cfg, res, events: EV, site: SITE, live, after: mem.after && mem.after.id === s.id ? mem.after.sweep : null, note: backup ? 'Đang dùng giá dự phòng ' + instead.replace(' (dự phòng)', '') + ', không phải ' + main.name : '' }); // một tin duy nhất: chú thích đi cùng album ảnh
     if (DRY) console.log('\n' + msg.plain(text));
     await sendImages(job(s), text);
     st.sent[key] = Date.now(); sent++; console.log('Đã xử lý', key, s.dir, s.score);
+    if (follow) steps.track(mem, key, s, res.now); // từ đây báo khớp / TP / SL / hủy theo đúng mức đã gửi
   }
+  // lệnh đã gửi trước đó: khớp, chạm TP / SL, hoặc phải hủy
+  if (follow && mem.orders && Object.keys(mem.orders).length) await tell(steps.orders(mem, F.m15, await liveOf(cfg, off, res.price, d.feed)).map((e) => Object.assign(e, { dir: e.order.dir === 'BUY' ? 1 : -1, price: res.price })));
   console.log('[' + id + '] số thông báo mới:', sent);
   return out;
 }

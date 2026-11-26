@@ -289,6 +289,15 @@
 
   A.lib = { MS, ny, mir, det, atrAt, keyLevels, biasOf, targets, pickTargets, track, round2, closedAt, f2, cfg: () => CFG }; // dùng chung với analyst-combo.js
 
+  /* cú quét thanh khoản trong 14 nến gần nhất mà chưa có đổi cấu trúc theo hướng đang canh (không gian "nhìn tăng") */
+  function freshSweep(D, n) {
+    const w0 = n - 14; let sw = null;
+    D.sweeps.forEach((q) => { if (!q.hi && q.i >= w0) sw = q; });
+    const lastEv = D.ev[D.ev.length - 1];
+    if (!sw || (lastEv && lastEv.i >= sw.i && lastEv.dir === 1)) return null;
+    return { sw, brk: D.sw.hi.filter((q) => q.i < sw.i).pop() || null };
+  }
+
   /* ---------- Phân tích chính ---------- */
   A.analyze = function (F, opt) {
     opt = opt || {};
@@ -321,11 +330,9 @@
       });
       // theo dõi: đã quét thanh khoản nhưng chưa có MSS
       if (!res.setups.length) {
-        const w0 = n - 14; let sw = null;
-        r15.D.sweeps.forEach((q) => { if (!q.hi && q.i >= w0) sw = q; });
-        const lastEv = r15.D.ev[r15.D.ev.length - 1];
-        if (sw && (!lastEv || lastEv.i < sw.i || lastEv.dir !== 1)) {
-          const brk = r15.D.sw.hi.filter((q) => q.i < sw.i).pop();
+        const fs = freshSweep(r15.D, n);
+        if (fs) {
+          const sw = fs.sw, brk = fs.brk;
           res.watch.push('Giá vừa quét ' + (d === 1 ? 'đáy' : 'đỉnh') + ' ' + f2(s(sw.p)) + ' lúc ' + A.tm(m15[sw.i].t) + (brk ? '. Chờ một nến 15m đóng cửa ' + (d === 1 ? 'trên ' : 'dưới ') + f2(s(brk.p)) + ' (MSS) và để lại FVG, khi đó mới có setup.' : '. Chờ MSS trên 15m.'));
         }
       }
@@ -338,6 +345,52 @@
     res.recent.sort((x, y) => y.ready - x.ready); res.recent = res.recent.slice(0, 6);
     if (!res.setups.length) res.notes.push(res.watch.length ? '' : 'Bias đã rõ nhưng cấu trúc 15m chưa đáp ứng đủ điều kiện của mô hình nào.');
     return res;
+  };
+
+  /* ---------- Ước tính lệnh ICT đang hình thành ----------
+     Chỉ để xem trước: không phải tín hiệu, không đổi quy tắc, không vào sổ lệnh và không gửi Telegram.
+     Điểm vào thật là giữa vùng FVG/OB do nhịp đẩy sau cú quét tạo ra, tức phụ thuộc những cây nến chưa có; ở đây đoán nó theo tỷ lệ
+     thường gặp của nhịp "cực trị cú quét → mức MSS". Sai số của cách đoán này nằm trong A.FORMING. */
+  /* Đo trên lịch sử MT5 (tham số học trước 2025, sai số đo từ 2025), chỉ trên những lần sau đó có lệnh thật từ đúng cú quét đang ước tính.
+     dep, rat: tham số đoán. entry, sl, tp = [mức lệch giữa, mức mà 4/5 số lần không vượt], tính bằng ATR 15m. conv = [% lần ra lệnh từ đúng cú quét này, % ra lệnh ICT cùng hướng] trong 36 nến.
+     score = [10%, giữa, 90%] điểm của lệnh ICT đã ra (align: 4H và 1H cùng hướng). */
+  A.FORMING = {
+    XAUUSD: { src: 'vàng MT5 2025–11/2026',
+      wait: { dep: 0.851, rat: 0.421, entry: [0.75, 1.72], sl: [0.64, 0.83], tp: [1.04, 2.59], conv: [11, 41] },
+      swept: { rat: 0.425, entry: [0.46, 0.94], sl: [0.01, 0.04], tp: [0.79, 2.37], conv: [23, 48] },
+      score: { align: [61, 73, 83], one: [58, 67, 78] } },
+    BTCUSD: { src: 'BTC MT5 2025–11/2026',
+      wait: { dep: 0.326, rat: 0.278, entry: [0.51, 1.06], sl: [0.25, 0.72], tp: [0.97, 2.22], conv: [12, 46] },
+      swept: { rat: 0.4, entry: [0.4, 0.84], sl: [0.01, 0.04], tp: [0.76, 2.07], conv: [25, 52] },
+      score: { align: [61, 73, 83], one: [57, 65, 75] } },
+  };
+  const FORM_DEF = { wait: { dep: 0.2, rat: 0.5 }, swept: { rat: 0.5 } };
+  /* at = { t, p }: cú quét đã biết (nến mở lúc t quét qua mốc p), dùng khi bot theo một mốc đã báo trước */
+  A.forming = function (F, res, par, at) {
+    if (!res || !res.bias || !res.bias.dir || res.closed || !res.levels || !F.m15 || F.m15.length < 120) return null;
+    const d = res.bias.dir, g = d === 1 ? (x) => x : mir, s = (p) => d * p, K = par || (A.FORMING && A.FORMING[res.sym && res.sym.id]) || FORM_DEF;
+    const b15 = g(F.m15), b1 = g(F.h1), b4 = g(F.h4), n = b15.length, D15 = det(b15).D, atr = atrAt(b15, n), price = s(res.price);
+    const lv = (a) => a.map((l) => ({ p: s(l.p), name: l.name })), hiL = lv(res.levels.hi), loL = lv(res.levels.lo), tgt = d === 1 ? hiL : loL, swp = d === 1 ? loL : hiL;
+    const level = swp.filter((l) => l.p < price).sort((a, b) => b.p - a.p)[0] || null; // mốc thanh khoản gần nhất mà mô hình tính là bị quét
+    let fs = null, stage, ext, mss, k;
+    if (at) { const i = F.m15.findIndex((x) => x.t === at.t); if (i < 0) return null; fs = { sw: { i, p: s(at.p) }, brk: D15.sw.hi.filter((q) => q.i < i).pop() || null }; } else fs = freshSweep(D15, n);
+    if (fs) {
+      stage = 'swept'; k = K.swept; ext = 1e18; for (let j = Math.max(0, fs.sw.i - 1); j < n; j++) ext = Math.min(ext, b15[j].l);
+      mss = fs.brk ? fs.brk.p : null;
+    } else {
+      if (!level) return null;
+      stage = 'wait'; k = K.wait; ext = level.p - k.dep * atr;
+      const sh = D15.sw.hi[D15.sw.hi.length - 1]; mss = sh && sh.p > level.p ? sh.p : null;
+    }
+    const top = Math.max(mss == null ? -1e18 : mss, ext + 1.2 * atr), entry = ext + k.rat * (top - ext), buf = Math.max(0.12 * atr, res.sym.buf), sl = ext - buf, risk = entry - sl;
+    const V = { b15, b1, b4, D15, D1: det(b1).D, D4: det(b4).D, tgt, atr }, pk = risk > 0 ? pickTargets(targets(V, entry, risk), entry, risk) : null;
+    const U = (p) => (p == null ? null : round2(s(p))), real = (p) => (p == null ? null : s(p)); // mốc có thật giữ nguyên số lẻ của nguồn giá
+    return {
+      stage, dir: d === 1 ? 'BUY' : 'SELL', atr, level: level ? { p: real(level.p), name: level.name } : null,
+      sweep: fs ? { t: F.m15[fs.sw.i].t, p: real(fs.sw.p) } : null, ext: real(ext), mss: real(mss), entry: U(entry), sl: U(sl),
+      tp1: pk ? U(pk.t1.p) : null, tp2: pk ? U(pk.t2.p) : null, rr1: pk ? (pk.t1.p - entry) / risk : null, rr2: pk ? (pk.t2.p - entry) / risk : null,
+      synthetic: !!(pk && pk.synthetic), risk: round2(risk), align: res.bias.t4.dir === d && res.bias.t1.dir === d,
+    };
   };
 
   /* ---------- Kiểm chứng trên dữ liệu gần đây (không nhìn tương lai) ---------- */

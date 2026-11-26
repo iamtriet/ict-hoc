@@ -117,10 +117,19 @@
   }
   const p2 = (n) => (n < 10 ? '0' : '') + n;
   const ixAt = (rows, t) => { let k = 0; for (let i = 0; i < rows.length; i++) { if (rows[i].t <= t) k = i; else break; } return k; };
+  /* chiều cao biểu đồ theo bề ngang khung và chiều cao màn hình: khung rộng thì cao hơn; điện thoại và màn hẹp giữ cỡ cũ */
+  const chartH = (host) => (typeof innerWidth !== 'number' || innerWidth < 900 ? 320 : Math.round(Math.max(320, Math.min(560, innerHeight * 0.6, ((host && host.clientWidth) || 600) * 0.66))));
+  /* các nút lớp của biểu đồ: lệnh (TP/SL), order block, bias, dấu của setup đang xem, rồi các lớp cấu trúc.
+     Nút TP/SL, Bias, Setup chỉ hiện ở khung có thứ để ẩn / hiện */
+  const LAYERS = ['tpsl', 'ob', 'bias', 'ann', 'struct', 'fvg', 'swing', 'liq', 'kz'], LAYERS_ON = ['tpsl', 'ob', 'bias', 'ann', 'struct', 'fvg'], LAYER_NAMES = { ann: 'Setup', ob: 'Bear/Bull OB' };
   function put(host, S, ann, o) {
     S.ann = ann;
-    return ICT.Chart(host, S, Object.assign({ layers: ['ann', 'struct', 'fvg', 'ob'], avail: ['ann', 'swing', 'struct', 'fvg', 'ob', 'liq', 'kz'], h: 330, slotMin: 5 }, o || {}));
+    const used = (k) => ann.some((a) => (a.layer || 'ann') === k) || (k === 'tpsl' && !!(o && o.pos));
+    return ICT.Chart(host, S, Object.assign({ layers: LAYERS_ON.slice(), avail: LAYERS.filter((k) => ['tpsl', 'bias', 'ann'].indexOf(k) < 0 || used(k)), names: LAYER_NAMES, posLayer: 'tpsl', h: 330, slotMin: 5 }, o || {}));
   }
+  /* nhớ nút nào đã bật / tắt ở từng khung, để tự cập nhật hay tải lại trang không bật lại */
+  const layersFor = (key) => { const m = (cfgGet().layers || {})[key] || {}; return LAYERS.filter((k) => (m[k] == null ? LAYERS_ON.indexOf(k) >= 0 : m[k])); };
+  const saveLayer = (key) => (k, on) => { const all = cfgGet().layers || {}; all[key] = Object.assign({}, all[key], { [k]: on }); cfgSet({ layers: all }); };
   const TFS = { h4: ['4H', '240', 'bias và dealing range'], h1: ['1H', '60', 'cấu trúc và vùng vào'], m15: ['15m', '15', 'kích hoạt và kế hoạch lệnh'], m5: ['5m', '5', 'điểm vào chi tiết'], d1: ['1D', 'D', 'xu hướng khung ngày'] };
   const extIx = (rows, t0, t1, low) => { let k = -1, v = low ? 1e18 : -1e18; rows.forEach((r, i) => { if (r.t >= t0 && r.t < t1 && (low ? r.l < v : r.h > v)) { v = low ? r.l : r.h; k = i; } }); return k < 0 ? ixAt(rows, t0) : k; };
   function charts(el, F, res, s) {
@@ -153,9 +162,8 @@
         const x1 = ixAt(rows, m15[o.ready].t), x2 = o.exit != null ? Math.max(x1 + 1, ixAt(rows, m15[o.exit].t)) : 'end';
         const hi = (p, q) => [U(Math.max(p, q)), U(Math.min(p, q))];
         const sl = hi(o.entry, o.sl), tp = hi(o.entry, o.tp1);
-        const side = o.dir === 'BUY' ? 1 : -1; // nhãn không lọt trong vùng thì đặt phía ngoài: SL về phía SL, TP về phía TP
-        out.push({ t: 'zone', x1, x2, y1: sl[0], y2: sl[1], text: 'SL ' + f2(o.sl), c: 'bear', op: 0.1, ce: true, out: side });
-        out.push({ t: 'zone', x1, x2, y1: tp[0], y2: tp[1], text: 'TP1 ' + f2(o.tp1), c: 'bull', op: 0.1, ce: true, out: -side });
+        out.push({ t: 'zone', x1, x2, y1: sl[0], y2: sl[1], text: 'SL ' + f2(o.sl), c: 'bear', op: 0.1, inside: true, layer: 'tpsl' });
+        out.push({ t: 'zone', x1, x2, y1: tp[0], y2: tp[1], text: 'TP1 ' + f2(o.tp1), c: 'bull', op: 0.1, inside: true, layer: 'tpsl' });
       });
       return out;
     };
@@ -163,7 +171,7 @@
     const build0 = (rows, key, anns, extra, defStart) => {
       const S = mkS(rows, SYM.name + ' ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, Math.min(defStart || 0, rows.length - 20));
       const sn = SNAP && SNAP[key]; let rg = [ds, rows.length]; if (sn) { const e = Math.max(20, Math.min(rows.length, rows.length - sn.tail)); rg = [Math.max(0, e - sn.n), e]; }
-      const opt = Object.assign({ pos: mkPos(rows, U), range: rg, h: 320, slotMin: 1, frames: false, lastLine: true, clip: true, zoomText: !SHOT }, extra || {}, SHOT || {}); // ảnh Telegram giữ cỡ chữ gốc if (sn) opt.layers = sn.layers;
+      const opt = Object.assign({ pos: mkPos(rows, U), range: rg, h: chartH(hosts[key]), slotMin: 1, frames: false, lastLine: true, clip: true, zoomText: !SHOT }, SHOT ? null : { layers: layersFor(key), onLayer: saveLayer(key) }, extra || {}, SHOT || {}); // ảnh Telegram giữ cỡ chữ gốc và đủ lớp mặc định
       const ch = put(hosts[key], S, anns(U).concat(pastAnn(rows, U)), opt);
       LVR.push({ key, S, ch, fig: hosts[key].closest('figure'), t: rows[rows.length - 1].t }); ZM.set(hosts[key].closest('figure'), { ch, len: rows.length, pad: (extra && extra.pad) || 12, s: rg[0], e: rg[1], def: [ds, rows.length] });
     };
@@ -179,17 +187,28 @@
     else hosts.m5.innerHTML = '<div class="an-tvn">Chưa đủ nến 5m để vẽ.</div>';
     // 1H
     const r1 = h1.slice(-300);
-    build(r1, 'h1', (U) => [{ t: 'label', at: r1.length - 1, text: 'Bias: ' + (B.dir > 0 ? 'TĂNG' : B.dir < 0 ? 'GIẢM' : 'chưa rõ'), c: B.dir > 0 ? 'bull' : B.dir < 0 ? 'bear' : 'note', pos: 'above', lift: 6 }].concat(s ? zoneAnn(r1, U, s.model === 'ICT' ? 'Vùng vào 15m' : 'Vùng retest') : []), { pad: 12 }, r1.length - 110);
+    build(r1, 'h1', (U) => [{ t: 'label', at: r1.length - 1, text: 'Bias: ' + (B.dir > 0 ? 'TĂNG' : B.dir < 0 ? 'GIẢM' : 'chưa rõ'), c: B.dir > 0 ? 'bull' : B.dir < 0 ? 'bear' : 'note', pos: 'above', lift: 6, layer: 'bias' }].concat(s ? zoneAnn(r1, U, s.model === 'ICT' ? 'Vùng vào 15m' : 'Vùng retest') : []), { pad: 12 }, r1.length - 110);
     // 4H
     const r4 = h4.slice(-200), R = B.range;
-    build(r4, 'h4', (U) => [{ t: 'hline', y: U(R.hi), x1: 0, x2: 'end', text: 'Đỉnh range 4H ' + f2(R.hi), c: 'warn' }, { t: 'hline', y: U(R.lo), x1: 0, x2: 'end', text: 'Đáy range 4H ' + f2(R.lo), c: 'warn', below: true }, { t: 'hline', y: U(R.eq), x1: 0, x2: 'end', text: 'EQ 50%', c: 'mute' }, { t: 'label', at: r4.length - 1, text: 'Giá ' + f2(res.price), c: 'info', pos: 'above', lift: 6 }], { pad: 10 }, r4.length - 90);
+    build(r4, 'h4', (U) => [{ t: 'hline', y: U(R.hi), x1: 0, x2: 'end', text: 'Đỉnh range 4H ' + f2(R.hi), c: 'warn' }, { t: 'hline', y: U(R.lo), x1: 0, x2: 'end', text: 'Đáy range 4H ' + f2(R.lo), c: 'warn', below: true }, { t: 'hline', y: U(R.eq), x1: 0, x2: 'end', text: 'EQ 50%', c: 'mute' }, { t: 'label', at: r4.length - 1, text: 'Giá ' + f2(res.price), c: 'info', pos: 'above', lift: 6 }].map((a) => Object.assign(a, { layer: 'bias' })), { pad: 10 }, r4.length - 90);
     zWire(el);
+  }
+
+  /* khung đổi bề ngang (ẩn / hiện thanh bên, xoay máy): chỉnh lại chiều cao các biểu đồ đang có */
+  let fitTimer = 0, fitW = 0, fitRo = null;
+  function fitCharts(view) {
+    if (fitRo) fitRo.disconnect(); if (!window.ResizeObserver) return;
+    fitRo = new ResizeObserver(() => {
+      const w = view.clientWidth; if (!w || Math.abs(w - fitW) < 24) return; fitW = w; clearTimeout(fitTimer);
+      fitTimer = setTimeout(() => LVR.forEach((c) => { if (!c.fig.isConnected) return; const h = chartH($('[data-ch]', c.fig)); if (Math.abs(h - c.ch.o.h) > 8) c.ch.setOpt('h', h); }), 150);
+    });
+    fitW = view.clientWidth; fitRo.observe(view);
   }
 
   /* zoom / kéo từng khung: nút − + ⟲, Ctrl + cuộn chuột, kéo ngang để xem lịch sử */
   const ZM = new WeakMap();
   const MDOPEN = new Set(); // các mô hình đang mở phần chi tiết (giữ lại khi tự cập nhật)
-  function snap() { const o = {}; LVR.forEach((c) => { if (c.extra) return; const z = ZM.get(c.fig); if (z && c.ch) o[c.key] = { n: z.e - z.s, tail: Math.max(0, z.len - z.e), layers: [...c.ch.layers] }; }); return o; }
+  function snap() { const o = {}; LVR.forEach((c) => { if (c.extra) return; const z = ZM.get(c.fig); if (z && c.ch) o[c.key] = { n: z.e - z.s, tail: Math.max(0, z.len - z.e) }; }); return o; }
   function zApply(z) { z.ch.setOpt('range', [z.s, z.e]); }
   function zoom(fig, f) {
     const z = ZM.get(fig); if (!z) return;
@@ -327,6 +346,7 @@
     if (fresh) return '<b>' + side(s.dir) + ' tại ' + f2(s.entry) + '</b>: nến xác nhận vừa đóng' + tp + warn;
     return '<b>' + side(s.dir) + ' ' + f2(s.entry) + ' đang chạy</b>: chưa vào thì không đuổi' + tp + warn;
   }
+  const sweepLevel = (res) => { const L = res.levels, sell = res.bias.dir < 0; return L ? (sell ? L.hi : L.lo).filter((x) => (sell ? x.p > res.price : x.p < res.price)).sort((a, b) => (sell ? a.p - b.p : b.p - a.p))[0] : null; };
   /* khi chưa có lệnh: cần chờ điều gì, dựa đúng trên điều kiện của mô hình */
   function waitFor(res) {
     const B = res.bias, d = B.dir, n = nearLevels(res), out = [];
@@ -336,7 +356,7 @@
       if (!out.length) out.push('Chờ 4H và 1H đồng thuận một hướng.');
       return out;
     }
-    const sell = d < 0, lv = sell ? n.up[0] : n.down[0], tgt = sell ? n.down[0] : n.up[0], cheap = sell ? B.loc < 0.5 : B.loc > 0.5, aim = tgt ? 'Mục tiêu ' + (sell ? 'phía dưới' : 'phía trên') + ': <b>' + f2(tgt.p) + '</b> (' + esc(short(tgt.name)) + ').' : '';
+    const sell = d < 0, lv = sweepLevel(res), tgt = sell ? n.down[0] : n.up[0], cheap = sell ? B.loc < 0.5 : B.loc > 0.5, aim = tgt ? 'Mục tiêu ' + (sell ? 'phía dưới' : 'phía trên') + ': <b>' + f2(tgt.p) + '</b> (' + esc(short(tgt.name)) + ').' : '';
     if (res.watch.length) return res.watch.map(esc).concat(aim ? [aim] : []);
     if (cheap) out.push('Giá đang ở vùng ' + (sell ? 'rẻ' : 'đắt') + ': không ' + (sell ? 'bán' : 'mua') + ' đuổi, chờ hồi ' + (sell ? 'lên trên ' : 'xuống dưới ') + '<b>' + f2(B.range.eq) + '</b> (EQ).');
     out.push(lv ? 'Chờ quét <b>' + f2(lv.p) + '</b> (' + esc(short(lv.name)) + ') rồi MSS ' + (sell ? 'giảm' : 'tăng') + ' trên 15m.' : 'Chờ quét ' + (sell ? 'đỉnh' : 'đáy') + ' gần nhất rồi MSS ' + (sell ? 'giảm' : 'tăng') + ' trên 15m.');
@@ -408,7 +428,6 @@
   const lossDv = (c) => !!(c && c.dv && c.dv[2] <= 0); // lỗ khi đo lại trên nguồn giá đang dùng
   const onBroker = (m) => { const c = coreT(m); return c && c.mt && onMt5() && RAW.msym === c.mt.sym ? c.mt.r : null; }; // đã đo trên đúng mã MT5 đang dùng
   const lossOn = (m) => { const b = onBroker(m); return b ? (b[2] <= 0 ? 'giá MT5' : '') : lossDv(coreT(m)) ? 'giá Deriv' : ''; };
-  const coreMark = (m) => { const c = coreT(m), w = c && lossOn(m); return c ? (w ? ' <span class="dn">✖ lỗ trên ' + w.replace('giá Deriv', 'Deriv') + '</span>' : c.ok ? ' <span class="up">✔ đã kiểm chứng</span>' : ' <span class="dn">✖ chưa đạt</span>') : ''; };
   const coreChip = (m) => { const c = coreT(m), w = c && lossOn(m); return c ? chip(w ? '✖ Lỗ khi đo trên ' + w : c.ok ? '✔ Đã kiểm chứng nhiều năm' : '✖ Chưa đạt kiểm chứng', c.ok && !w ? 'ok' : 'no') : ''; };
   const anyEdge = () => ['ICT', 'PA'].some((m) => { const c = coreT(m); return c && c.ok && !lossOn(m); });
   /* bảng kiểm chứng nhiều năm của hai mô hình chính trên mã đang xem */
@@ -428,13 +447,32 @@
   const td = (l, v, c) => '<td data-l="' + l + '"' + (c ? ' class="' + c + '"' : '') + '>' + v + '</td>';
   const stRow = (when, name, x, tp1, tp2, state) => '<tr>' + td('Tín hiệu lúc', when) + td('Mô hình', name) + td('Hướng', '<b>' + side(x.dir) + '</b>', x.dir === 'BUY' ? 'up' : 'dn') + td('Entry', f2(x.entry)) + td('SL', f2(x.sl)) + td('TP1', tp1) + td('TP2', tp2) + td('Trạng thái', state) + '</tr>';
   const when = (t) => hmVN(t) + ' ' + dmVN(t);
+  /* lệnh ICT chưa có nhưng đang hình thành: bước nào đã xong và số ước tính kèm sai số đã đo. Không phải tín hiệu: không vào sổ lệnh, không gửi Telegram */
+  function formingHtml(res) {
+    const B = res.bias, F = OUT && OUT.F, K = A.FORMING && A.FORMING[SYM.id];
+    if (!F || !K || !B || !B.dir || res.closed || res.setups.length || modeOf() === 'pa' || (res.news && res.news.block) || (!ASOF && Date.now() - res.now > 45 * 60000)) return '';
+    let f = null; try { f = A.forming(F, res, K); } catch (e) { console.error(e); } if (!f) return '';
+    const buy = f.dir === 'BUY', k = K[f.stage], step = res.price >= 20000 ? 10 : res.price >= 1000 ? 1 : 0; // làm tròn để số ước tính không tỏ ra chính xác hơn thực tế
+    const about = (p) => (p == null ? '–' : '≈ ' + (step ? String(Math.round(p / step) * step) : f2(p))), usd = (a) => { const v = a * f.atr; return '$' + (v >= 20 ? Math.round(v) : v.toFixed(1)); };
+    const sc = f.align ? K.score.align : K.score.one, rr = (r) => (r == null ? '' : 'RR ≈ 1:' + r.toFixed(1));
+    const li = (c, t) => '<li class="' + c + '">' + t + '</li>', over = 'đóng cửa ' + (buy ? 'trên ' : 'dưới '), mss = f.mss == null ? 'Chờ MSS trên 15m' : 'Chờ nến 15m ' + over + '<b>' + f2(f.mss) + '</b> (MSS)';
+    const steps = [li('ok', f.align ? '4H và 1H cùng ' + (buy ? 'tăng' : 'giảm') : 'Thiên hướng ' + (buy ? 'tăng' : 'giảm') + ', 4H và 1H chưa cùng hướng')];
+    if (f.stage === 'wait') steps.push(li('now', 'Chờ quét <b>' + f2(f.level.p) + '</b> (' + esc(short(f.level.name)) + '), còn cách $' + Math.abs(res.price - f.level.p).toFixed(1)), li('', mss.replace('Chờ nến', 'Sau đó nến').replace('Chờ MSS', 'Sau đó MSS') + ' và để lại FVG/OB'));
+    else steps.push(li('ok', 'Đã quét <b>' + f2(f.sweep.p) + '</b> lúc ' + hmVN(f.sweep.t) + ' (' + (buy ? 'đáy' : 'đỉnh') + ' cú quét ' + f2(f.ext) + ')'), li('now', mss + ' và để lại FVG/OB'));
+    steps.push(li('', 'Khi đủ điều kiện, lệnh hiện ở “Chờ khớp” với mức chính xác'));
+    const cell = (l, v, sub) => '<div><i>' + l + '</i><b>' + v + '</b><span>' + sub + '</span></div>';
+    return '<div class="an-grp g-form"><h3>◌ Đang hình thành · ' + side(f.dir) + ' <em>ước tính, chưa phải lệnh</em></h3><ol class="an-steps">' + steps.join('') + '</ol>' +
+      '<div class="an-est">' + cell('Entry', about(f.entry), '± ' + usd(k.entry[0])) + cell('SL', about(f.sl), f.stage === 'swept' ? 'đổi nếu thêm ' + (buy ? 'đáy' : 'đỉnh') + ' mới' : '± ' + usd(k.sl[0])) + cell('TP1', about(f.tp1), rr(f.rr1)) + cell('TP2', about(f.tp2), rr(f.rr2)) + cell('Điểm', '≈ ' + sc[1], 'thường ' + sc[0] + '–' + sc[2]) + '</div>' +
+      (f.rr2 != null && f.rr2 < 2 ? '<p class="an-line an-warn">RR ước tính tới TP2 dưới 1:2: nếu đúng vậy, mô hình sẽ không ra lệnh.</p>' : '') +
+      '<p class="an-line muted">Chỉ ' + k.conv[0] + '% lần ' + (f.stage === 'wait' ? 'chờ' : 'quét') + ' như thế ra lệnh từ đúng cú quét này trong 9 giờ (' + k.conv[1] + '% ra một lệnh ICT cùng hướng). Khi có lệnh, một nửa số lần điểm vào lệch hơn ' + usd(k.entry[0]) + ', 1/5 số lần lệch hơn ' + usd(k.entry[1]) + '; TP1 một nửa số lần lệch hơn ' + usd(k.tp[0]) + ' (đo trên ' + K.src + ', quy theo biên độ nến hiện tại). Chỉ để chuẩn bị, đừng đặt lệnh theo số này.</p></div>';
+  }
   /* ba nhóm rõ ràng: chờ khớp, đang chạy, đã kết thúc. Lệnh đang chạy lâu (không còn thẻ chi tiết) vẫn nằm ở nhóm đang chạy. */
   function statusHtml(res) {
     if (!res.bias || (res.closed && ASOF)) return '';
-    const row = (s) => { const k = res.setups.indexOf(s), nm = (s.model === 'PA' ? 'Price Action' : 'ICT') + coreMark(s.model); return stRow(when(s.since || res.m15[s.ready].t + 900000), (k >= 0 && k < CARDS ? '<a href="#" data-go="k' + k + '">' + nm + '</a>' : nm), s, f2(s.tp1), f2(s.tp2), '<span' + liveAttr(s, res) + '>' + (STX[s.state] || s.state) + (s.fill != null ? rTxt(s.R) : '') + '</span>'); };
+    const row = (s) => { const k = res.setups.indexOf(s), nm = s.model === 'PA' ? '<abbr title="Price Action">PA</abbr>' : 'ICT'; /* cảnh báo kiểm chứng đã ghi ở khối nhận định */ return stRow(when(s.since || res.m15[s.ready].t + 900000), (k >= 0 && k < CARDS ? '<a href="#" data-go="k' + k + '">' + nm + '</a>' : nm), s, f2(s.tp1), f2(s.tp2), '<span' + liveAttr(s, res) + '>' + (STX[s.state] || s.state) + (s.fill != null ? rTxt(s.R) : '') + '</span>'); };
     const wait = res.setups.filter((x) => WAITING.indexOf(x.state) >= 0), run = res.setups.concat(res.recent).filter((x) => RUNNING.indexOf(x.state) >= 0), done = res.recent.filter((x) => RUNNING.indexOf(x.state) < 0 && WAITING.indexOf(x.state) < 0);
     const group = (cls, title, list) => '<div class="an-grp ' + cls + '"><h3>' + title + ' (' + list.length + ')</h3>' + (list.length ? stTable(list.map(row)) : '<p class="an-line muted">Không có.</p>') + '</div>';
-    return '<section class="an-card"><div class="an-h"><h2>Trạng thái lệnh</h2></div>' + group('g-wait', '⏳ Chờ khớp', wait) + group('g-run', '▶ Đang chạy', run) +
+    return '<section class="an-card an-st-card"><div class="an-h"><h2>Trạng thái lệnh</h2></div>' + formingHtml(res) + group('g-wait', '⏳ Chờ khớp', wait) + group('g-run', '▶ Đang chạy', run) +
       '<details class="an-keep an-grp g-done" data-id="recent"><summary><b>■ Đã kết thúc' + (ASOF ? '' : ' · 5 ngày gần nhất') + ' (' + done.length + ')</b></summary>' + (done.length ? stTable(done.map(row)) : '<p class="an-line muted">Không có.</p>') + '</details></section>';
   }
   function mdCard(x, i) {
@@ -476,11 +514,11 @@
       const host = $('[data-ch=' + key + ']', card); if (!host) return;
       try {
         const S = mkS(rows, SYM.name + ' ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, rows.length - show);
-        const ch = put(host, S, annsOf(rows, U), { range: [ds, rows.length], h: 320, slotMin: 1, frames: false, lastLine: true, zoomText: true, pad: 12, layers: ['ann'], fit: [U(x.entry), U(x.sl)] });
+        const ch = put(host, S, annsOf(rows, U), { range: [ds, rows.length], h: chartH(host), slotMin: 1, frames: false, lastLine: true, zoomText: true, pad: 12, layers: ['tpsl'], avail: ['tpsl', 'ob', 'struct', 'fvg', 'swing', 'liq', 'kz'], fit: [U(x.entry), U(x.sl)] });
         LVR.push({ key, S, ch, fig: host.closest('figure'), t: rows[rows.length - 1].t, extra: true }); ZM.set(host.closest('figure'), { ch, len: rows.length, pad: 12, s: ds, e: rows.length, def: [ds, rows.length] });
       } catch (e) { console.error(e); host.innerHTML = '<div class="an-tvn">Không vẽ được khung ' + TFS[key][0] + ': ' + esc(e.message || String(e)) + '</div>'; }
     };
-    const lines = (n) => (rows, U) => [{ t: 'hline', y: U(x.entry), x1: Math.max(0, rows.length - n), x2: 'end', text: (x.state === 'pending' ? x.type : 'Entry') + ' ' + f2(x.entry), c: 'info', below: x.dir !== 'BUY' }, { t: 'hline', y: U(x.sl), x1: Math.max(0, rows.length - n), x2: 'end', text: 'SL ' + f2(x.sl), c: 'bear', below: x.dir === 'BUY' }];
+    const lines = (n) => (rows, U) => [{ t: 'hline', y: U(x.entry), x1: Math.max(0, rows.length - n), x2: 'end', text: (x.state === 'pending' ? x.type : 'Entry') + ' ' + f2(x.entry), c: 'info', below: x.dir !== 'BUY', layer: 'tpsl' }, { t: 'hline', y: U(x.sl), x1: Math.max(0, rows.length - n), x2: 'end', text: 'SL ' + f2(x.sl), c: 'bear', below: x.dir === 'BUY', layer: 'tpsl' }];
     draw('d1', F.d1.slice(-200), lines(30), 90); draw('m15', F.m15.slice(-300), lines(120), 130);
     zWire(card);
   }
@@ -674,8 +712,8 @@
       res.n = V.m15.length; res.m15 = V.m15; OUT = { F: V, res };
       try { res.md = A.models({ m15: F.m15, h4: F.h4L, d1: F.d1 }, { sym: SYM.id, news: res.news, bias: res.bias }); } catch (e) { console.error(e); res.md = { list: [], orders: [], holding: [], notes: [], held: 0, error: e.message || String(e) }; }
       let h = T ? '<div class="an-past"><b>Đang xem lại quá khứ</b><button type="button" class="btn pri sm" id="an-back">⟲ Về hiện tại</button></div>' : '';
-      h += verdictHtml(res);
-      h += statusHtml(res);
+      const board = statusHtml(res);
+      h += '<div class="an-top' + (board ? ' two' : '') + '">' + verdictHtml(res) + board + '</div>';
       res.setups.slice(0, CARDS).forEach((s, k) => (h += setupHtml(s, res, k)));
       if (!res.setups.length && !res.closed) h += emptyHtml();
       h += modelsHtml(res) + refHtml(res);
@@ -753,7 +791,8 @@
       if (b.dataset.a === 'png') { b.disabled = true; exportPng(card, s, OUT.res).catch((er) => alert('Không xuất được ảnh: ' + er.message)).finally(() => (b.disabled = false)); }
       else if (b.dataset.a === 'copy') { const t = md ? mdPlan(md) : planText(s, OUT.res); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).catch(() => { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (er) { /* bỏ qua */ } ta.remove(); }).finally(() => { const o = b.textContent; b.textContent = '✔ Đã sao chép'; setTimeout(() => (b.textContent = o), 1600); }); }
     });
-    ICT.live.push(() => { btRun++; liveStop(); LVR.length = 0; });
+    fitCharts(view);
+    ICT.live.push(() => { btRun++; liveStop(); LVR.length = 0; if (fitRo) { fitRo.disconnect(); fitRo = null; } });
     run(view, false);
   };
 })();

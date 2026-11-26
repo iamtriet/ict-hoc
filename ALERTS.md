@@ -2,9 +2,30 @@
 
 GitHub Actions quét thị trường 24/7: ngay khi nến 15m đóng (nghe giá trực tiếp: vàng từ Deriv, BTC từ Coinbase; trễ vài giây) và dự phòng 5 phút một lần (một lượt chạy giữ máy ~5h40 rồi tự gọi lượt kế tiếp; cron mỗi giờ chỉ là lưới an toàn vì cron của GitHub hay trễ hoặc bỏ lượt), dùng đúng lõi phân tích của trang web
 (`assets/analyst-core.js`). Chỉ khi có setup đạt điều kiện và điểm ≥ 55, bot gửi cho bạn một **album 4 ảnh** (4H, 1H, 15m, 5m)
-vẽ giống trang Phân tích (điểm quét, MSS/BOS, FVG, Order Block, hộp Entry/SL/TP), kèm chú thích ngắn: lệnh cần đặt, SL/TP, bối cảnh 4H/1H, điều kiện đạt và chưa đạt, khi nào hủy. Mỗi setup chỉ được gửi một lần. Không có setup thì bot im lặng.
+vẽ giống trang Phân tích (điểm quét, MSS/BOS, FVG, Order Block, hộp Entry/SL/TP), kèm chú thích ngắn: lệnh cần đặt, SL/TP, bối cảnh 4H/1H, điều kiện đạt và chưa đạt, khi nào hủy. Mỗi setup chỉ được gửi một lần.
 
 Ảnh được vẽ bằng Chrome ẩn trên máy chạy GitHub (`scripts/shot.js` mở `scripts/render.html`). Nếu không dựng được, bot gửi một ảnh 15m đơn giản như trước để không bỏ lỡ tín hiệu. Đặt biến `SHOT` = `off` nếu chỉ muốn ảnh đơn giản.
+
+## Tin từng bước của một lệnh ICT
+
+Ngoài album lệnh, bot báo từng thay đổi trên nến 15m **đã đóng** (không đổi quy tắc vào lệnh):
+
+1. 🧹 **Đã quét**: giá chọc qua mốc đang chờ rồi đóng cửa quay lại (gồm cả đỉnh / đáy swing mà trang Phân tích ghi "đã quét"). Tin nêu bước tiếp theo (mức MSS), điểm hủy và **BUY / SELL LIMIT ước tính** kèm tỷ lệ thành lệnh và sai số. Số ước tính chưa phải lệnh.
+2. 🟢/🔴 **BUY LIMIT / SELL LIMIT**: đã có MSS và vùng vào, đây mới là mức chính xác để đặt lệnh (album 4 ảnh như trước). Khoảng 3/4 lệnh limit có tin "đã quét" đi trước (mô phỏng 3 tháng giá vàng MT5); số còn lại tới thẳng.
+3. Cập nhật lệnh đã gửi: ✅ khớp · 🎯 TP1 (dời SL hòa vốn) · 🏁 TP2 · 🛑 SL · ⛔ / ⌛ **hủy lệnh chờ** (giá tới TP1 trước khi khớp, hoặc quá 9 giờ).
+4. Kế hoạch bị hủy: ❌ cú quét hỏng · ⌛ quá 4 giờ rưỡi chưa có MSS · ◻️ có MSS nhưng không đủ điều kiện · ⚠️ đóng cửa phá mốc · ↔️ đổi thiên hướng (giữ qua hai nến).
+
+Số tin: mỗi mã khoảng 8–12 tin một ngày (đo mô phỏng). Muốn bớt, đặt biến `STAGES`:
+
+| Giá trị | Gửi gì |
+|---|---|
+| `sweep,swing,cancel,order` | mặc định |
+| `sweep,cancel,order` | chỉ theo cú quét đúng mốc đang chờ, bỏ đỉnh / đáy swing nhỏ (ít tin hơn nhiều, nhưng nhiều lệnh tới không báo trước) |
+| thêm `plan` | báo cả mỗi lần đổi mốc chờ (thêm khoảng 4–5 tin / ngày mỗi mã) |
+| `order` | chỉ lệnh và cập nhật lệnh |
+| `off` | tắt tin từng bước, chỉ còn album lệnh |
+
+Tin đến sau khi nến đóng; nếu bot vừa chạy lại sau khi ngừng thì chuyện đã cũ không được báo lại. ICT đang lỗ trong kiểm chứng trên cả hai mã: các tin này để quan sát và học, không phải lời khuyên đầu tư.
 
 ## Cài đặt (một lần, khoảng 5 phút)
 
@@ -52,6 +73,7 @@ Công cụ (web và bot) không đưa lệnh quanh các tin USD mức High: lãi
 | `BTC_FEED` | Đặt `binance` để dùng lại Binance BTC/USDT | Coinbase |
 | `PRICE_OFFSET` | Chỉ dùng khi vàng lấy từ PAXG: `spot` (tự quy đổi theo giá vàng spot), `none`, hoặc một số cộng vào giá (ví dụ `2.5`) | spot |
 | `HB_HOUR` | Giờ UTC gửi tin báo sống hằng ngày (0 = 07:00 giờ Việt Nam) | 0 |
+| `STAGES` | Tin từng bước của lệnh (xem mục trên): `sweep`, `swing`, `cancel`, `order`, `plan`, hoặc `off` | sweep,swing,cancel,order |
 | `SESSIONS` | Các phiên được báo giờ bắt đầu, ngăn cách bằng dấu phẩy: `asia`, `london`, `ny`, `lc` (London Close), `pm` (NY PM). `off` để tắt | asia,london,ny |
 | `SITE_URL` | Liên kết đặt trong tin nhắn | trang phân tích của bạn |
 

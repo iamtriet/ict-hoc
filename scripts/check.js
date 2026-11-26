@@ -160,6 +160,31 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
     if (!n) throw new Error('không ghi được tín hiệu nào');
     ok('Trang trực tiếp: sổ tín hiệu đúng (' + n + ' tín hiệu từ dữ liệu mẫu, ' + opened + ' còn mở)');
   } catch (e) { fail('trang trực tiếp: ' + e.message); }
+  // tin Telegram từng bước: chờ quét → đã quét → hủy / lệnh limit → khớp / TP / SL
+  try { ok('Tin từng bước: kịch bản đúng, dữ liệu mẫu ' + require('./stages-test.js')(win, ROOT)); } catch (e) { fail('tin từng bước: ' + e.message); }
+  // ước tính lệnh đang hình thành: đúng phía, khớp dòng theo dõi của lõi, không đụng tới danh sách lệnh
+  try {
+    const SG = win.ICT.signals; let wait = 0, swept = 0;
+    for (const id of ids) {
+      const K = A.FORMING && A.FORMING[id];
+      if (!K || !K.src || !['wait', 'swept'].every((s) => K[s] && [K[s].rat, K[s].conv[0], K[s].conv[1], K[s].entry[0], K[s].entry[1], K[s].sl[0], K[s].sl[1], K[s].tp[0], K[s].tp[1]].every(num)) || !num(K.wait.dep) || [K.score.align, K.score.one].some((a) => !(a[0] <= a[1] && a[1] <= a[2]))) throw new Error(id + ': thiếu số đo sai số của phần ước tính');
+      const d = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', id + '.json'), 'utf8')), data = { m15: rows(d.m15), h1: rows(d.h1), h4: rows(d.h4) };
+      for (let k = 400; k >= 0; k -= 2) {
+        const a = SG.analyzeAt(data, data.m15[data.m15.length - 1 - k].t + SG.M15, { sym: id, events: [], news: false }); if (!a) continue;
+        const res = a.res, before = JSON.stringify([res.setups, res.recent, res.watch]), f = A.forming(a.F, res, K);
+        if (JSON.stringify([res.setups, res.recent, res.watch]) !== before) throw new Error('phần ước tính làm đổi kết quả phân tích');
+        if (!res.bias.dir || res.closed) { if (f) throw new Error('không có thiên hướng mà vẫn ước tính'); continue; }
+        if (!f) continue;
+        const s = res.bias.dir, up = (x, y) => s * (x - y) > 0;
+        if (f.dir !== (s === 1 ? 'BUY' : 'SELL') || ![f.entry, f.sl, f.ext, f.atr, f.risk].every(num) || !up(f.entry, f.sl) || !up(f.ext, f.sl)) throw new Error(id + ': mức ước tính sai phía ' + JSON.stringify(f));
+        if (f.tp1 != null && !(up(f.tp1, f.entry) && s * (f.tp2 - f.tp1) >= 0)) throw new Error(id + ': mục tiêu ước tính sai phía');
+        if (!res.setups.length && (res.watch.length > 0) !== (f.stage === 'swept')) throw new Error(id + ': giai đoạn "đã quét" không khớp dòng theo dõi');
+        if (f.stage === 'wait') { wait++; if (!f.level || !up(res.price, f.level.p) || !up(f.level.p, f.ext)) throw new Error(id + ': mốc chờ quét phải nằm bên kia giá'); } else { swept++; if (!f.sweep) throw new Error(id + ': thiếu cú quét'); }
+      }
+    }
+    if (!wait || !swept) throw new Error('dữ liệu mẫu không chạm đủ hai giai đoạn: ' + wait + '/' + swept);
+    ok('Ước tính lệnh đang hình thành: ' + wait + ' lần chờ quét, ' + swept + ' lần đã quét, đúng phía và không đổi tín hiệu');
+  } catch (e) { fail('ước tính lệnh: ' + e.message); }
   // biểu đồ giá thật: chú thích ngoài khoảng thời gian / giá đang xem phải ẩn, vùng thò ra ngoài bị cắt ở mép
   try {
     const el = () => ({ clientWidth: 700, scrollWidth: 700, style: {}, children: [], innerHTML: '', textContent: '', setAttribute() {}, appendChild() {}, addEventListener() {}, classList: { add() {}, toggle() {} } });
@@ -167,7 +192,8 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
     const draw = (clip, zoom) => {
       const parts = {}, host = Object.assign(el(), { querySelector: (q) => (parts[q] = parts[q] || Object.assign(el(), { style: { setProperty(n, v) { this[n] = v; } } })) }), S = win.ICT.defRaw('chk', bars, { sym: 'XAUUSD', title: 'thử', max: bars.length }), U = (p) => (p - S.base) / S.pip;
       const zone = (text, x1, x2, a, b) => ({ t: 'zone', x1, x2, y1: U(a), y2: U(b), text, c: 'bull' });
-      S.ann = [zone('CU', 0, 5, 100, 101), zone('TRONG', 60, 75, 99.5, 100.5), zone('CAO', 60, 75, 500, 501), zone('THOMOTPHAN', 78, 95, 100, 500), zone('DANGMO', 0, 'end', 99, 99.4),
+      const lvl = (text, x1, x2, a, b) => Object.assign(zone(text, x1, x2, a, b), { inside: true });
+      S.ann = [lvl('SL 90.00', 53, 66, 106, 108), lvl('TP 80.00', 91, 93, 92, 98), lvl('SL 70.00', 96, 96, 108.6, 108.8), lvl('TP 60.00', 40, 43, 93, 94.6), zone('CU', 0, 5, 100, 101), zone('TRONG', 60, 75, 99.5, 100.5), zone('CAO', 60, 75, 500, 501), zone('THOMOTPHAN', 78, 95, 100, 500), zone('DANGMO', 0, 'end', 99, 99.4),
         zone('MAUTHUA', 30, 51, 99.5, 100.5), zone('VUNGHEP', 70, 71, 105, 106),
         { t: 'hline', y: U(100.2), x1: 0, x2: 3, text: 'VACHCU', c: 'warn' }, { t: 'hline', y: U(500), x1: 0, x2: 'end', text: 'VACHCAO', c: 'warn' }];
       win.ICT.Chart(host, S, { layers: ['ann'], range: zoom ? zoom.range : [50, 100], frames: false, h: 300, slotMin: 1, clip, zoomText: !!zoom });
@@ -181,10 +207,26 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
     if (!ys.length || ys.some((r) => r[0] < 23.9 || r[1] > 276)) throw new Error('vùng chú thích vượt khung vẽ: ' + JSON.stringify(ys));
     const hep = on.match(/ x="([-\d.]+)" y="[-\d.]+">VUNGHEP<\/text>/); // cây nến 70 nằm quanh x = 241
     if (!hep || Math.abs(+hep[1] + 20 - 246) > 60) throw new Error('nhãn của vùng hẹp trôi xa vùng: ' + (hep ? hep[1] : 'không thấy'));
+    // chữ mức lệnh: nằm trong khung (một dòng, hai dòng hoặc xoay dọc), không vừa thì ẩn
+    const wide = on.match(/<text class="tx sm lvl" x="([-\d.]+)" y="([-\d.]+)" text-anchor="middle">SL 90.00<\/text>/);
+    if (!wide || +wide[1] < 40 || +wide[1] > 200) throw new Error('nhãn SL không nằm trong khung rộng: ' + (wide && wide[1]));
+    if (!/rotate\(-90[^>]*>TP 80.00<\/text>/.test(on) && !(has(on, 'TP') || />80.00<\/text>/.test(on))) throw new Error('nhãn TP của khung hẹp phải xoay dọc hoặc xuống dòng trong khung');
+    if (/>SL 70.00<|>70.00</.test(on)) throw new Error('khung quá nhỏ thì không được ghi nhãn ra ngoài');
+    if (/>TP 60.00<|>60.00</.test(on) || !/class="tx sm lvl"[^>]*>TP<\/text>/.test(on)) throw new Error('khung nhỏ thì chỉ ghi chữ TP bên trong, bỏ giá');
     if (!has(draw(false), 'CU')) throw new Error('biểu đồ bài học (không cắt) bị đổi cách vẽ');
     const kIn = draw(true, { range: [85, 100] }), kMid = draw(true, { range: [40, 100] }), kOut = draw(true, { range: [0, 100] });
     if (!(kIn > kMid && kMid > kOut && kIn <= 1.3 && kOut >= 0.72)) throw new Error('cỡ chữ không to khi phóng to / nhỏ khi thu nhỏ: ' + [kIn, kMid, kOut]);
-    ok('Biểu đồ: chú thích ngoài khung đang xem được ẩn, cỡ chữ theo mức phóng');
+    // mỗi lớp ẩn / hiện riêng: chú thích thường, TP/SL (gồm hộp lệnh đang xem) và bias
+    const part = (layers) => {
+      const parts = {}, host = Object.assign(el(), { querySelector: (q) => (parts[q] = parts[q] || Object.assign(el(), { style: { setProperty() {} } })) }), S = win.ICT.defRaw('lyr', bars, { sym: 'XAUUSD', title: 'thử', max: bars.length }), U = (p) => (p - S.base) / S.pip;
+      const line = (text, p, layer) => ({ t: 'hline', y: U(p), x1: 0, x2: 'end', text, layer });
+      S.ann = [line('THUONG', 100.2), line('LENH', 99.6, 'tpsl'), line('XUHUONG', 100.8, 'bias')];
+      win.ICT.Chart(host, S, { layers, range: [50, 100], frames: false, h: 300, slotMin: 1, clip: true, posLayer: 'tpsl', pos: { i: 60, dir: 1, entry: U(100), sl: U(99.2), tp1: U(100.6), tp2: U(101), rr1: 1, rr2: 2 } });
+      const svg = parts.svg.innerHTML; return ['>THUONG<', '>LENH<', '>XUHUONG<', 'class="pbx '].map((t) => (svg.indexOf(t) >= 0 ? 1 : 0)).join('');
+    };
+    const got = [part(['ann']), part(['tpsl']), part(['bias']), part(['ann', 'tpsl', 'bias']), part([])].join(' ');
+    if (got !== '1000 0101 0010 1111 0000') throw new Error('ẩn / hiện theo lớp sai: ' + got);
+    ok('Biểu đồ: chú thích ngoài khung đang xem được ẩn, cỡ chữ theo mức phóng, các lớp TP/SL và Bias bật tắt riêng');
   } catch (e) { fail('biểu đồ: ' + e.message); }
   // nguồn giá Deriv:ghép trang lịch sử, tách nến đang chạy, chốt nến khi sang kỳ mới (máy chủ giả, không cần mạng)
   try { await require('./deriv-test.js')(ROOT); ok('Nguồn giá Deriv: ghép trang, tách nến đang chạy và chốt nến đúng'); } catch (e) { fail('nguồn giá Deriv: ' + e.message); }

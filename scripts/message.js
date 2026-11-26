@@ -22,9 +22,10 @@ module.exports = function (A) {
   function setup(s, c) {
     const { cfg, res } = c, buy = s.dir === 'BUY', side = buy ? 'MUA' : 'BÁN', f = (x) => (+x).toFixed(cfg.dec);
     const model = s.model === 'PA' ? 'Price Action' : s.model, t = ((A.CORE_TESTS || {})[cfg.id] || {})[s.model], mark = t ? (t.dv && t.dv[2] <= 0 ? ' ✖ lỗ khi đo trên giá Deriv' : t.ok ? ' ✔ đã kiểm chứng' : ' ✖ chưa đạt kiểm chứng') : '';
-    const action = s.state === 'pending' ? '<b>' + side + ' limit ' + f(s.entry) + '</b> · lệnh chờ, không vào ở giá hiện tại' : s.state === 'inzone' ? '<b>' + side + ' quanh ' + f(s.entry) + '</b> · giá đang trong vùng, chờ phản ứng' : s.state === 'active' ? '<b>' + side + ' tại ' + f(s.entry) + '</b> · nến xác nhận vừa đóng' : '<b>Entry ' + f(s.entry) + '</b>';
-    const head = [(buy ? '🟢' : '🔴') + ' <b>' + side + ' ' + cfg.name + '</b> · điểm <b>' + s.score + '</b> (' + s.grade + ')', model + mark, '',
-      action, 'SL ' + f(s.sl) + ' (rủi ro $' + f(s.risk) + cfg.unit + ')', 'TP1 ' + f(s.tp1) + ' (1:' + s.rr1 + ') · TP2 ' + f(s.tp2) + ' (1:' + s.rr2 + ')'];
+    const limit = (buy ? 'BUY' : 'SELL') + ' LIMIT';
+    const action = s.state === 'pending' ? '<b>' + limit + ' ' + f(s.entry) + '</b> · lệnh chờ ' + side.toLowerCase() + ', không vào ở giá hiện tại' : s.state === 'inzone' ? '<b>' + side + ' quanh ' + f(s.entry) + '</b> · giá đang trong vùng, chờ phản ứng' : s.state === 'active' ? '<b>' + side + ' tại ' + f(s.entry) + '</b> · nến xác nhận vừa đóng' : '<b>Entry ' + f(s.entry) + '</b>';
+    const head = [(buy ? '🟢' : '🔴') + ' <b>' + (s.state === 'pending' ? limit : side) + ' ' + cfg.name + '</b> · điểm <b>' + s.score + '</b> (' + s.grade + ')', model + mark].concat(c.after ? ['✅ Đã MSS sau cú quét ' + f(c.after.p) + ' (' + hm(c.after.t) + '): đủ điều kiện đặt lệnh'] : [], '',
+      action, 'SL ' + f(s.sl) + ' (rủi ro $' + f(s.risk) + cfg.unit + ')', 'TP1 ' + f(s.tp1) + ' (1:' + s.rr1 + ') · TP2 ' + f(s.tp2) + ' (1:' + s.rr2 + ')');
     // giá lúc gửi và giờ nến tạo tín hiệu: để biết lệnh còn cách bao xa, giá đã chạy tới đâu
     const live = c.live != null ? c.live : res.price, waiting = s.state === 'pending' || s.state === 'inzone';
     head.push('💲 Giá lúc gửi <b>' + f(live) + '</b> · cách entry ' + f(Math.abs(live - s.entry)) + (s.t0 ? ' · tín hiệu từ nến đóng ' + hm(s.t0 + 900000) : ''));
@@ -51,6 +52,52 @@ module.exports = function (A) {
     return out;
   }
 
+  /* tin từng bước (scripts/stages.js): chờ quét → đã quét → hủy / đổi kế hoạch; c = { cfg, site } */
+  function stage(e, c) {
+    const { cfg } = c, f = (x) => (+x).toFixed(cfg.dec), buy = e.dir === 1, name = cfg.name, want = buy ? 'MUA' : 'BÁN', limit = (buy ? 'BUY' : 'SELL') + ' LIMIT';
+    const under = buy ? 'dưới ' : 'trên ', over = buy ? 'trên ' : 'dưới ', low = buy ? 'đáy' : 'đỉnh';
+    const level = (l) => f(l.p) + ' (' + esc(short(l.name)) + ')';
+    const link = '<a href="' + c.site + '">Mở trang phân tích</a> · không phải lời khuyên đầu tư';
+    const t = ((A.CORE_TESTS || {})[cfg.id] || {}).ICT, losing = t && !(t.ok && !(t.dv && t.dv[2] <= 0));
+    const waitLine = (p) => '⏳ Mốc chờ mới: quét ' + (p.dir === 1 ? 'dưới ' : 'trên ') + level(p.level) + (p.mss != null ? ', rồi MSS ' + (p.dir === 1 ? 'trên ' : 'dưới ') + f(p.mss) : '') + ' · còn cách $' + f(Math.abs(e.price - p.level.p));
+    const L = [];
+    if (e.type === 'plan') {
+      L.push((e.dir === 1 ? '🟢' : '🔴') + ' <b>' + name + ': ' + (e.turned ? 'chuyển sang CHỜ ' + want : 'CHỜ ' + want) + '</b>');
+      if (e.broke) L.push('⚠️ Giá đóng cửa ' + (e.broke.level.dir === 1 ? 'dưới ' : 'trên ') + level(e.broke.level) + ': phá mốc, không phải cú quét');
+      L.push(waitLine(e));
+    } else if (e.type === 'broke') {
+      L.push('⚠️ <b>' + name + ': phá mốc, không phải cú quét</b>', 'Nến ' + hm(e.t) + ' đóng cửa ' + under + level(e.level) + ' ở ' + f(e.close) + '. Bỏ kế hoạch ' + want.toLowerCase() + ' tại mốc này.');
+    } else if (e.type === 'sweep') {
+      const s = e.sweep, g = e.f, K = A.FORMING && A.FORMING[cfg.id], k = K && K.swept;
+      L.push('🧹 <b>' + name + ': ĐÃ QUÉT ' + f(s.p) + '</b> → chuẩn bị ' + want, 'Nến 15m ' + hm(s.t) + ' quét ' + under + level(s) + ' rồi đóng cửa quay lại ✔ (' + low + ' cú quét ' + f(s.ext) + ')', '');
+      L.push('👉 <b>Bước tiếp</b>: ' + (s.mss != null ? 'chờ nến 15m đóng cửa ' + over + '<b>' + f(s.mss) + '</b> (MSS)' : 'chờ MSS trên 15m') + ' và để lại FVG/OB, trong khoảng 4 giờ rưỡi.');
+      if (e.block) L.push('⛔ Đang quanh giờ tin mạnh: chưa đặt lệnh.');
+      else if (g && k) {
+        const step = e.price >= 20000 ? 10 : e.price >= 1000 ? 1 : 0, about = (p) => (p == null ? '–' : '≈ ' + (step ? Math.round(p / step) * step : f(p))), usd = (v) => { const u = v * g.atr; return u >= 20 ? Math.round(u) : u.toFixed(1); };
+        L.push('🧮 <b>' + limit + ' ước tính</b> (CHƯA đặt lệnh): ' + about(g.entry) + ' · SL ' + about(g.sl) + ' · TP ' + about(g.tp1) + ' / ' + about(g.tp2), 'Chỉ ~' + k.conv[0] + '% cú quét như vậy ra lệnh thật; điểm vào thường lệch ±$' + usd(k.entry[0]) + '. Lệnh thật sẽ có tin riêng.');
+      }
+      L.push('❌ Hủy nếu nến đóng cửa ' + under + f(s.ext));
+      if (g && g.align === false) L.push('⚠️ 4H và 1H chưa cùng hướng: độ tin cậy thấp');
+      if (losing) L.push('⚠️ ICT đang lỗ trong kiểm chứng ' + cfg.id + ': chỉ để quan sát');
+    } else if (e.type === 'deeper') {
+      L.push('↕️ <b>' + name + ': ' + low + ' mới ' + f(e.sweep.ext) + '</b> sau cú quét', 'SL dự kiến dời theo' + (e.f ? ' (≈ ' + f(e.f.sl) + ')' : '') + '. Vẫn chờ ' + (e.sweep.mss != null ? 'đóng cửa ' + over + f(e.sweep.mss) : 'MSS') + '.');
+    } else if (e.type === 'fail') {
+      L.push('❌ <b>' + name + ': hủy kế hoạch ' + want + '</b>', 'Nến ' + hm(e.t) + ' đóng cửa ' + under + 'cực trị của cú quét ' + f(e.sweep.p) + ' (đóng ở ' + f(e.close) + '): cú quét hỏng.');
+    } else if (e.type === 'expired') {
+      L.push('⌛ <b>' + name + ': hủy kế hoạch ' + want + '</b>', 'Quá 4 giờ rưỡi sau cú quét ' + f(e.sweep.p) + ' (' + hm(e.sweep.t) + ') mà chưa có MSS.');
+    } else if (e.type === 'noorder') {
+      L.push('◻️ <b>' + name + ': có MSS nhưng KHÔNG có lệnh</b>', 'Đã đóng cửa ' + over + f(e.sweep.mss) + ' sau cú quét ' + f(e.sweep.p) + ', nhưng không đủ điều kiện (vùng vào, RR hoặc điểm). Bỏ qua.');
+    } else if (e.type === 'flip') {
+      L.push('↔️ <b>' + name + ': đổi thiên hướng</b>', (e.sweep ? 'Hủy kế hoạch ' + want + ' sau cú quét ' + f(e.sweep.p) + '. ' : 'Bỏ chờ ' + want.toLowerCase() + '. ') + (e.now ? 'Chuyển sang canh ' + (e.now === 1 ? 'mua' : 'bán') + '.' : '4H và 1H chưa đồng thuận: đứng ngoài.'));
+    } else if (e.type === 'order') {
+      const o = e.order, side = (o.dir === 'BUY' ? 'BUY' : 'SELL') + (o.model === 'PA' ? '' : ' LIMIT') + ' ' + f(o.entry), R = e.R == null ? '' : ' (' + (e.R >= 0 ? '+' : '') + e.R.toFixed(2) + 'R)';
+      const what = { active: ['✅', 'đã khớp', 'SL ' + f(o.sl) + ' · TP1 ' + f(o.tp1)], tp1: ['🎯', 'chạm TP1 ' + f(o.tp1), 'Chốt 50% và dời SL về ' + f(o.entry) + '. Giữ phần còn lại tới ' + f(o.tp2) + '.'], tp2: ['🏁', 'chạm TP2 ' + f(o.tp2) + R, 'Kế hoạch hoàn tất.'], sl: ['🛑', 'chạm SL ' + f(o.sl) + R, 'Kế hoạch kết thúc.'], tp1be: ['↩️', 'về hòa vốn sau TP1' + R, 'Phần còn lại đóng ở entry.'], missed: ['⛔', 'HỦY LỆNH CHỜ', 'Giá đã tới TP1 ' + f(o.tp1) + ' trước khi khớp: xóa lệnh, không đuổi.'], expired: ['⌛', 'HỦY LỆNH CHỜ', 'Quá 9 giờ chưa khớp: xóa lệnh.'] }[e.state];
+      if (!what) return null;
+      L.push(what[0] + ' <b>' + name + ' · ' + side + ': ' + what[1] + '</b>', what[2]);
+    } else return null;
+    return L.concat(['', link]).join('\n');
+  }
+
   function session(x, rows, events) {
     const ev = (events || []).filter((e) => (!e.country || e.country === 'USD') && e.impact === 'High' && e.t >= x.t && e.t <= x.end).sort((a, b) => a.t - b.t);
     return ['🕒 <b>' + x.n + '</b> · ' + hm(x.t) + '–' + hm(x.end)].concat(rows.map(symbolLine), ev.map((e) => '🗓 ' + esc(A.newsLabel(e.title)) + ' ' + hm(e.t) + ' · đứng ngoài quanh giờ này')).join('\n');
@@ -63,5 +110,5 @@ module.exports = function (A) {
     return lines.join('\n');
   }
   const connected = (rows, min) => ['✅ <b>Kết nối thành công</b> · gửi setup từ ' + min + ' điểm'].concat(rows.map((r) => symbolLine(r) + ' · ' + r.setups + ' setup')).join('\n');
-  return { setup, session, heartbeat, connected, symbolLine, progress, plain, LIMIT };
+  return { setup, stage, session, heartbeat, connected, symbolLine, progress, plain, LIMIT };
 };

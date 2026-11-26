@@ -192,7 +192,15 @@
   document.addEventListener('click', (e) => { if (!e.target.closest('.search')) sRes.hidden = true; });
 
   /* ---- Khởi động ---- */
-  $('#menuBtn').onclick = () => document.body.classList.toggle('nav');
+  /* thanh bên: màn rộng thì ẩn / hiện (nhớ lựa chọn), điện thoại thì mở ngăn trượt như trước */
+  const wideScreen = () => matchMedia('(min-width: 981px)').matches;
+  const sideUi = () => $('#menuBtn').setAttribute('aria-expanded', wideScreen() ? !document.body.classList.contains('side-off') : document.body.classList.contains('nav'));
+  function toggleSide() {
+    if (wideScreen()) { const off = document.body.classList.toggle('side-off'); try { localStorage.setItem('ict.side', off ? 'off' : 'on'); } catch (e) { /* không lưu được thì thôi */ } } else document.body.classList.toggle('nav');
+    sideUi();
+  }
+  $('#menuBtn').onclick = toggleSide; sideUi();
+  document.addEventListener('keydown', (e) => { if (e.key !== '[' || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '') || (e.target && e.target.isContentEditable)) return; e.preventDefault(); toggleSide(); });
   $('.scrim').onclick = () => document.body.classList.remove('nav');
   side.addEventListener('click', (e) => { if (e.target.closest('a.nv')) document.body.classList.remove('nav'); });
   $('#themeBtn').onclick = () => {
