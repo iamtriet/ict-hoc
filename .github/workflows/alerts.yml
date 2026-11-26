@@ -64,6 +64,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           HB_HOUR: ${{ vars.HB_HOUR }}
           NEWS: ${{ vars.NEWS }}
+          SESSIONS: ${{ vars.SESSIONS }}
           SYMBOLS: ${{ vars.SYMBOLS }}
           PRICE_OFFSET: ${{ vars.PRICE_OFFSET }}
         run: node scripts/watch.js

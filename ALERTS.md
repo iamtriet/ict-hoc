@@ -47,7 +47,12 @@ Công cụ (web và bot) không đưa lệnh quanh các tin USD mức High: lãi
 | `MODE` | `both`, `ict` hoặc `pa` | both |
 | `PRICE_OFFSET` | `spot` (tự quy đổi theo giá vàng spot), `none`, hoặc một số cộng vào giá (ví dụ `2.5`) | spot |
 | `HB_HOUR` | Giờ UTC gửi tin báo sống hằng ngày (0 = 07:00 giờ Việt Nam) | 0 |
+| `SESSIONS` | Các phiên được báo giờ bắt đầu, ngăn cách bằng dấu phẩy: `asia`, `london`, `ny`, `lc` (London Close), `pm` (NY PM). `off` để tắt | asia,london,ny |
 | `SITE_URL` | Liên kết đặt trong tin nhắn | trang phân tích của bạn |
+
+## Báo giờ phiên giao dịch
+
+Khi một phiên (killzone) bắt đầu, bot gửi một tin ngắn: tên phiên, giờ bắt đầu – kết thúc theo giờ Việt Nam và giờ New York, đặc điểm thường gặp của phiên, giá và xu hướng hiện tại của từng mã, và các tin mạnh rơi vào phiên đó (nếu có). Mốc giờ tính theo giờ New York nên tự đúng khi đổi giờ mùa hè. Giờ mặc định (giờ New York → giờ Việt Nam mùa đông / mùa hè): Asia 20:00 (08:00 / 07:00), London 02:00 (14:00 / 13:00), New York 07:00 (19:00 / 18:00). Vàng nghỉ cuối tuần nên bot bỏ qua các phiên thứ Bảy, Chủ nhật (trừ phiên Á mở cửa tuần) và phiên Á tối thứ Sáu. Tin báo sống hằng ngày cũng ghi 3 phiên sắp tới. Đây chỉ là báo giờ, không phải tín hiệu vào lệnh.
 
 ## Bitcoin (BTCUSD)
 

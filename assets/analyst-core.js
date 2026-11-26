@@ -57,6 +57,26 @@
     return { block: cur.length > 0, current: cur, next: nxt, until: cur.length ? Math.max.apply(null, cur.map((x) => x.to)) : null };
   };
 
+  /* ---------- các phiên quan trọng (killzone, tính theo giờ New York nên tự đúng khi đổi giờ mùa hè) ----------
+     Cùng mốc với vùng killzone vẽ trên biểu đồ. Bot dùng để báo giờ bắt đầu phiên. */
+  A.SESSIONS = [
+    { id: 'asia', n: 'Phiên Á (Asia)', s: 1200, e: 1440, tip: 'Thường đi ngang, tạo biên độ Asia. Đánh dấu đỉnh/đáy phiên Á: London hay quét thanh khoản ở hai đầu này trước khi chọn hướng.' },
+    { id: 'london', n: 'Phiên London', s: 120, e: 300, tip: 'Hay quét thanh khoản đỉnh/đáy phiên Á (Judas swing) rồi tạo hướng đi của ngày. Chờ giá quét rồi phản ứng, đừng đuổi theo cú quét.' },
+    { id: 'ny', n: 'Phiên New York', s: 420, e: 600, tip: 'Biến động mạnh nhất ngày, nhiều tin USD ra lúc 08:30 NY. Có thể tiếp diễn hoặc đảo chiều hướng London.' },
+    { id: 'lc', n: 'London Close', s: 600, e: 720, tip: 'London đóng cửa: hay có nhịp hồi hoặc đảo ngắn hạn, nhiều lệnh chốt lời.' },
+    { id: 'pm', n: 'NY PM', s: 810, e: 960, tip: 'Phiên chiều New York: thanh khoản giảm dần, thường tiếp diễn rồi đi ngang gần đóng cửa.' },
+  ];
+  const sesOpen = (day, id) => { const w = new Date(day + 'T00:00:00Z').getUTCDay(); return w === 6 ? false : w === 0 ? id === 'asia' : w === 5 ? id !== 'asia' : true; }; // vàng nghỉ cuối tuần
+  const sesObj = (x, day) => { const t = nyUtc(day, x.s); return Object.assign({}, x, { key: day + ':' + x.id, t, end: t + (x.e - x.s) * 60000 }); };
+  /* phiên vừa bắt đầu trong `win` phút qua (mặc định 15) */
+  A.sessionsDue = (now, win, ids) => { const c = ny(now); return A.SESSIONS.filter((x) => (!ids || ids.indexOf(x.id) >= 0) && c.min >= x.s && c.min < x.s + (win || 15) && sesOpen(c.day, x.id)).map((x) => sesObj(x, c.day)); };
+  /* n phiên kế tiếp sau thời điểm `now` */
+  A.sessionsNext = (now, n, ids) => {
+    const c = ny(now), out = [];
+    for (let k = 0; k < 4; k++) { const day = new Date(Date.parse(c.day + 'T00:00:00Z') + k * 86400000).toISOString().slice(0, 10); A.SESSIONS.forEach((x) => { if ((!ids || ids.indexOf(x.id) >= 0) && sesOpen(day, x.id)) { const o = sesObj(x, day); if (o.t > now) out.push(o); } }); }
+    return out.sort((a, b) => a.t - b.t).slice(0, n || 3);
+  };
+
   /* ---------- tiện ích ---------- */
   const med = (a) => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)] || 0; };
   const atrAt = (b, end, n) => { n = n || 14; end = Math.min(end == null ? b.length : end, b.length); let s = 0, c = 0; for (let i = Math.max(1, end - n); i < end; i++) { s += Math.max(b[i].h - b[i].l, Math.abs(b[i].h - b[i - 1].c), Math.abs(b[i].l - b[i - 1].c)); c++; } return c ? s / c : 0; };

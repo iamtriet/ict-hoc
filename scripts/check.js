@@ -59,6 +59,15 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
   const cpi = [{ t: Date.UTC(2026, 11, 10, 13, 30), title: 'CPI m/m', impact: 'High', country: 'USD' }];
   if (!(blk(cpi, -44) && !blk(cpi, -46) && blk(cpi, 59) && !blk(cpi, 61))) fail('cửa sổ tin CPI phải là 45 phút trước – 60 phút sau');
   if (!bad) ok('Lịch tin: ngày NFP/FOMC dựng sẵn và cửa sổ đứng ngoài đúng');
+  // phiên giao dịch: đúng giờ cả mùa đông (EST) lẫn mùa hè (EDT), bỏ qua cuối tuần
+  const due = (t, ids) => A.sessionsDue(t, 15, ids).map((x) => x.id).join(',');
+  if (due(Date.UTC(2026, 0, 14, 7, 5)) !== 'london' || due(Date.UTC(2026, 6, 14, 6, 5)) !== 'london') fail('phiên London phải bắt đầu 02:00 giờ New York (07:00 UTC mùa đông, 06:00 UTC mùa hè)');
+  if (due(Date.UTC(2026, 0, 14, 12, 5)) !== 'ny' || due(Date.UTC(2026, 0, 15, 1, 5)) !== 'asia') fail('phiên New York 07:00 / Asia 20:00 giờ New York sai');
+  if (due(Date.UTC(2026, 0, 14, 7, 20)) !== '' || due(Date.UTC(2026, 0, 13, 7, 5), ['ny']) !== '') fail('phiên chỉ được báo trong 15 phút đầu và theo danh sách chọn');
+  if (due(Date.UTC(2026, 0, 17, 12, 5)) !== '' || due(Date.UTC(2026, 0, 18, 7, 5)) !== '' || due(Date.UTC(2026, 0, 19, 1, 5)) !== 'asia' || due(Date.UTC(2026, 0, 18, 1, 5)) !== '' || due(Date.UTC(2026, 0, 17, 1, 5)) !== '') fail('cuối tuần: chỉ báo phiên Á mở cửa tối Chủ nhật, bỏ qua phiên Á tối thứ Sáu');
+  const nx = A.sessionsNext(Date.UTC(2026, 0, 16, 22, 0), 3);
+  if (nx.length !== 3 || nx[0].id !== 'asia' || nx[0].t !== Date.UTC(2026, 0, 19, 1, 0) || nx[1].id !== 'london') fail('danh sách phiên sắp tới sai quanh cuối tuần');
+  if (!bad) ok('Phiên giao dịch: giờ bắt đầu đúng mùa đông/hè, cuối tuần được bỏ qua');
   // 3. bot Telegram: cú pháp đã kiểm ở trên; thử nạp lõi như bot
   console.log(bad ? '\n' + bad + ' lỗi' : '\nTất cả kiểm tra đạt'); process.exit(bad ? 1 : 0);
 })();

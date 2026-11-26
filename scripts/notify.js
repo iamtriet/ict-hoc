@@ -89,6 +89,9 @@ async function getEvents(st) {
 /* ---- tin hệ thống: báo sống mỗi ngày, báo lỗi dữ liệu, báo chuỗi quét bị đứt ---- */
 const HB_HOUR = env.HB_HOUR !== undefined && env.HB_HOUR !== '' ? +env.HB_HOUR : 0; // giờ UTC gửi tin báo sống (0 = 07:00 giờ Việt Nam)
 const vn = (t) => { const d = new Date((t || Date.now()) + 7 * 3600000); return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
+const hm = (t) => { const d = new Date(t + 7 * 3600000); return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
+const nyh = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+const SES = env.SESSIONS === 'off' ? [] : (env.SESSIONS || 'asia,london,ny').toLowerCase().split(/[\s,]+/).filter(Boolean); // phiên cần báo: asia, london, ny, lc, pm
 async function say(text) {
   if (DRY) { console.log('[tin hệ thống] ' + text.replace(/<[^>]+>/g, '')); return; }
   try { await tg('sendMessage', { chat_id: env.TG_CHAT_ID, parse_mode: 'HTML', text, disable_web_page_preview: true }); } catch (e) { console.log('Không gửi được tin hệ thống:', e.message); }
@@ -149,14 +152,29 @@ async function main(st) {
     if (!x.length) return '\n🗓 Không có tin mạnh của USD trong 36 giờ tới';
     return '\n🗓 Tin mạnh: ' + x.map((e) => esc(e.label) + ' ' + vn(e.t) + ' VN' + (e.t - nw <= 0 ? ' (đang trong vùng tin, bot đứng ngoài)' : ' (còn ' + (e.mins >= 90 ? Math.round(e.mins / 60) + ' giờ' : e.mins + ' phút') + ')')).join('; ');
   };
+  const sesLine = () => { if (!SES.length) return ''; const x = A.sessionsNext(Date.now(), 3, SES); return x.length ? '\n🕒 Phiên sắp tới (giờ VN): ' + x.map((e) => e.n + ' ' + vn(e.t)).join('; ') : ''; };
   const L = (r) => r.id + ' ≈ ' + (+r.price).toFixed(r.dec) + ' · ' + esc(r.bias) + (r.ageMin > 45 ? ' (thị trường nghỉ/dữ liệu chậm)' : '');
   if (TEST) await tg('sendMessage', { chat_id: env.TG_CHAT_ID, parse_mode: 'HTML', text: '✅ <b>Kết nối thành công.</b>\nBot sẽ gửi tin khi có setup đủ điều kiện (điểm ≥ ' + MIN + ').\nMã đang quét: ' + SYMBOLS.join(', ') + '\n' + ok.map((r) => L(r) + ' · ' + r.setups + ' setup').join('\n') });
   // báo sống: mỗi ngày một tin, gửi ở lượt quét đầu tiên sau HB_HOUR giờ UTC (kể cả khi thị trường nghỉ)
   const today = new Date().toISOString().slice(0, 10);
   if (ok.length && !env.ASOF && new Date().getUTCHours() >= HB_HOUR && st.hb !== today) {
     const n24 = Object.keys(st.sent).filter((k) => st.sent[k] >= Date.now() - 86400000).length;
-    await say('💚 <b>Bot đang chạy bình thường</b> · ' + vn() + ' giờ VN\n' + ok.map(L).join('\n') + '\nSetup đã gửi trong 24 giờ qua: ' + n24 + newsLine() + '\n<i>Không có tin setup nghĩa là chưa có setup đủ điều kiện, không phải bot hỏng.</i>');
+    await say('💚 <b>Bot đang chạy bình thường</b> · ' + vn() + ' giờ VN\n' + ok.map(L).join('\n') + '\nSetup đã gửi trong 24 giờ qua: ' + n24 + newsLine() + sesLine() + '\n<i>Không có tin setup nghĩa là chưa có setup đủ điều kiện, không phải bot hỏng.</i>');
     if (!DRY) st.hb = today;
+  }
+  // báo giờ bắt đầu phiên quan trọng (Asia / London / New York...): gửi ở lượt quét đầu tiên trong 15 phút sau giờ mở phiên
+  if (SES.length && !env.ASOF) {
+    const nw = +env.SESSION_AT || Date.now(); st.ses = st.ses || {}; // SESSION_AT chỉ để thử
+    for (const x of A.sessionsDue(nw, 15, SES)) {
+      if (st.ses[x.key] && !FORCE) continue;
+      const evs = EV.filter((e) => (!e.country || e.country === 'USD') && e.impact === 'High' && e.t >= x.t && e.t <= x.end).sort((a, b) => a.t - b.t);
+      await say('🕒 <b>' + x.n + ' bắt đầu</b>\n' + hm(x.t) + ' – ' + hm(x.end) + ' giờ VN (' + nyh(x.s) + ' – ' + nyh(x.e % 1440) + ' giờ New York)\n' + esc(x.tip) +
+        (ok.length ? '\n\n' + ok.map(L).join('\n') : '') +
+        (evs.length ? '\n🗓 Tin mạnh trong phiên: ' + evs.map((e) => esc(A.newsLabel(e.title)) + ' ' + hm(e.t) + ' VN (bot đứng ngoài quanh giờ này)').join('; ') : '') +
+        '\n<i>Chỉ báo giờ phiên, không phải tín hiệu vào lệnh. Bot vẫn chỉ gửi setup khi đủ điều kiện.</i>');
+      if (!DRY) st.ses[x.key] = nw;
+    }
+    for (const k of Object.keys(st.ses)) if (st.ses[k] < nw - 3 * 86400000) delete st.ses[k];
   }
   if (err && !ok.length) throw err;
 }
