@@ -269,7 +269,7 @@
       D.label = (i) => { const m = D.mins[i]; return p2(Math.floor(m / 60)) + ':' + p2(m % 60); };
       let pos = null; if (sel) { let i = src.findIndex((b) => b.t >= sel.t - M15); if (i < 0) i = src.length - 1; pos = { i, dir: sel.dir === 'BUY' ? 1 : -1, entry: U(sel.entry), sl: U(sel.sl), tp1: U(sel.tp1), tp2: U(sel.tp2), rr1: sel.rr1, rr2: sel.rr2 }; }
       D.ann = [];
-      CH.ch = ICT.Chart($('#lv-chart'), D, { layers, avail: ['ann', 'swing', 'struct', 'fvg', 'ob', 'liq', 'kz'], h: 380, slotMin: 1, frames: false, lastLine: true, pad: 8, pos, range: [Math.max(0, src.length - (innerWidth < 700 ? 60 : 100)), src.length] });
+      CH.ch = ICT.Chart($('#lv-chart'), D, { layers, avail: ['ann', 'swing', 'struct', 'fvg', 'ob', 'liq', 'kz'], h: 380, slotMin: 1, frames: false, lastLine: true, clip: true, pad: 8, pos, range: [Math.max(0, src.length - (innerWidth < 700 ? 60 : 100)), src.length] });
       CH.S = D; CH.key = key; CH.t = form ? form.t : 0; CH.at = Date.now(); return;
     }
     if (form && Date.now() - CH.at > 90) { const D = CH.S, u = (p) => (p + S.off - D.base) / D.pip; D.bars[D.n - 1] = { o: u(form.o), h: u(form.h), l: u(form.l), c: u(form.c) }; CH.ch.draw(); CH.at = Date.now(); }

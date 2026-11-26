@@ -238,6 +238,12 @@
       const px = (i) => m.l + (i - x0 + 0.5) * slot, py = (p) => m.t + ((hi - p) / (hi - lo)) * plotH;
       const D = L.size ? ICT.detect(S, i1) : null;
       const bw = Math.max(1.4, slot * 0.66);
+      /* o.clip (biểu đồ giá thật): chú thích nằm ngoài khoảng giá / thời gian đang xem thì ẩn hẳn, vùng thò ra ngoài thì cắt ở mép,
+         để nhãn không bị dồn lên mép trên hay hai bên khi phóng to, kéo biểu đồ */
+      const base = m.t + plotH, off = (ya, yb) => !!o.clip && (Math.max(ya, yb) < m.t || Math.min(ya, yb) > base), cy = (y) => (o.clip ? clamp(y, m.t, base) : y);
+      const gone = (a) => !!o.clip && (S.X(a.x1 == null ? 0 : a.x1, 0) > i1 - 1 || (a.x2 != null && a.x2 !== 'end' && S.X(a.x2, 2) < x0));
+      // vùng bị mép khung cắt mà phần còn thấy không chứa nổi nhãn: bỏ nhãn, tránh nhãn trôi ra mép
+      const stub = (cutX, cutY, w, h, text) => !!o.clip && ((cutX && w < text.length * 5.5 + 4) || (cutY && h < 12)); // chỉ xét chiều bị cắt
 
       /* --- bộ tránh chồng: nến + nhãn đã đặt --- */
       const occC = []; for (let i = x0; i < i1; i++) { const b = S.bars[i], cx = px(i); occC.push({ x1: cx - bw / 2 - 1.5, x2: cx + bw / 2 + 1.5, y1: py(b.h) - 1.5, y2: py(b.l) + 1.5 }); }
@@ -261,6 +267,15 @@
             if (!occL.some((q) => r.x1 < q.x2 + 2 && r.x2 > q.x1 - 2 && r.y1 < q.y2 + 1 && r.y2 > q.y1 - 1)) pick = r;
           }
           if (pick) { occL.push(pick); return pick; }
+          if (q.near) { // biểu đồ giá thật: nhãn phải nằm sát vùng của nó (ngay trên hoặc dưới), hết chỗ thì bỏ chứ không trôi đi xa
+            const taken = (r) => occL.some((p) => r.x1 < p.x2 + 2 && r.x2 > p.x1 - 2 && r.y1 < p.y2 + 1 && r.y2 > p.y1 - 1);
+            for (const busy of [hit, taken]) // lượt đầu né cả nến; lượt sau chấp nhận đè nến nhưng không đè nhãn khác
+              for (let j = 0; j < 3; j++) for (const d of q.out === 1 ? [1, -1] : [-1, 1]) for (const dx of [0, -w / 2, w / 2]) {
+                const x1 = clamp(cx - w / 2 + dx, 2, right - w), y = d < 0 ? b.y1 - h - 1 - j * h * 0.9 : b.y2 + 1 + j * h * 0.9, r = { x1, y1: y, x2: x1 + w, y2: y + h };
+                if (y >= 2 && y + h <= H - m.b - 2 && !busy(r)) { occL.push(r); return r; }
+              }
+            return null;
+          }
           q.anchor = 'start'; q.ax = b.x1 + 2; q.ay = b.y1; q.side = -1; q.maxK = 4; // vùng quá nhỏ/chật: đặt sát mép trên như cũ
         }
         if (q.kind === 'pill') {
@@ -325,14 +340,14 @@
       };
       if (L.has('pd') && i1 > 8) { let ph = -1e9, pl = 1e9; for (let i = Math.max(x0, i1 - 70); i < i1; i++) { ph = Math.max(ph, S.bars[i].h); pl = Math.min(pl, S.bars[i].l); } pdBox(m.l, ph, pl, 'a a-info'); }
       if (D && L.has('fvg')) D.fvg.forEach((z) => {
-        if (z.fill != null && z.fill < x0) return; const xa = px(Math.max(z.x1, x0)) - slot / 2, xe = z.fill != null ? px(z.fill) : right, c = z.dir === 1 ? 'a-zb' : 'a-zr';
-        s += '<g class="a ' + c + '"><rect class="fl" fill-opacity="' + (z.fill != null ? 0.1 : 0.2) + '" x="' + xa + '" y="' + py(z.top) + '" width="' + Math.max(2, xe - xa) + '" height="' + Math.max(1, py(z.bot) - py(z.top)) + '"/><line class="ln dot" x1="' + xa + '" x2="' + xe + '" y1="' + py((z.top + z.bot) / 2) + '" y2="' + py((z.top + z.bot) / 2) + '"/></g>';
-        if (z.fill == null) req({ text: 'FVG', box: { x1: xa, x2: xe, y1: py(z.top), y2: py(z.bot) }, tc: 'tx sm', g: 'a ' + c, pri: 2 });
+        if (z.fill != null && z.fill < x0) return; if (off(py(z.top), py(z.bot))) return; const xa = px(Math.max(z.x1, x0)) - slot / 2, xe = z.fill != null ? px(z.fill) : right, c = z.dir === 1 ? 'a-zb' : 'a-zr', ya = cy(py(z.top)), yb = cy(py(z.bot)), mid = py((z.top + z.bot) / 2);
+        s += '<g class="a ' + c + '"><rect class="fl" fill-opacity="' + (z.fill != null ? 0.1 : 0.2) + '" x="' + xa + '" y="' + ya + '" width="' + Math.max(2, xe - xa) + '" height="' + Math.max(1, yb - ya) + '"/>' + (off(mid, mid) ? '' : '<line class="ln dot" x1="' + xa + '" x2="' + xe + '" y1="' + mid + '" y2="' + mid + '"/>') + '</g>';
+        if (z.fill == null && !stub(false, ya !== py(z.top) || yb !== py(z.bot), 0, yb - ya, 'FVG')) req({ text: 'FVG', box: { x1: xa, x2: xe, y1: ya, y2: yb }, tc: 'tx sm', g: 'a ' + c, pri: 2, near: o.clip });
       });
       if (D && L.has('ob')) D.ob.slice(-5).forEach((z) => {
-        if (z.inv != null && z.inv < x0) return; const xa = px(Math.max(z.i, x0)) - slot / 2, xe = z.inv != null ? px(z.inv) : right, c = z.dir === 1 ? 'a-ob' : 'a-os', ww = Math.max(2, xe - xa), hh = Math.max(1, py(z.bot) - py(z.top));
-        s += '<g class="a ' + c + '"><rect class="fl" fill-opacity="' + (z.inv != null ? 0.08 : 0.22) + '" x="' + xa + '" y="' + py(z.top) + '" width="' + ww + '" height="' + hh + '"/><rect class="ln" fill="none" x="' + xa + '" y="' + py(z.top) + '" width="' + ww + '" height="' + hh + '"/></g>';
-        req({ text: z.dir === 1 ? 'Bull OB' : 'Bear OB', box: { x1: xa, x2: xa + ww, y1: py(z.top), y2: py(z.bot) }, tc: 'tx sm', g: 'a ' + c, pri: 2 });
+        if (z.inv != null && z.inv < x0) return; if (off(py(z.top), py(z.bot))) return; const xa = px(Math.max(z.i, x0)) - slot / 2, xe = z.inv != null ? px(z.inv) : right, c = z.dir === 1 ? 'a-ob' : 'a-os', ww = Math.max(2, xe - xa), ya = cy(py(z.top)), yb = cy(py(z.bot)), hh = Math.max(1, yb - ya);
+        s += '<g class="a ' + c + '"><rect class="fl" fill-opacity="' + (z.inv != null ? 0.08 : 0.22) + '" x="' + xa + '" y="' + ya + '" width="' + ww + '" height="' + hh + '"/><rect class="ln" fill="none" x="' + xa + '" y="' + ya + '" width="' + ww + '" height="' + hh + '"/></g>';
+        if (!stub(false, ya !== py(z.top) || yb !== py(z.bot), 0, yb - ya, 'OB')) req({ text: z.dir === 1 ? 'Bull OB' : 'Bear OB', box: { x1: xa, x2: xa + ww, y1: ya, y2: yb }, tc: 'tx sm', g: 'a ' + c, pri: 2, near: o.clip });
       });
       if (D && L.has('liq')) {
         D.eq.forEach((q) => {
@@ -370,13 +385,15 @@
         }
         if (a.t === 'hline') {
           const ia = Math.max(S.X(a.x1 == null ? 0 : a.x1, 0), x0), ie = a.x2 == null || a.x2 === 'end' ? null : Math.min(S.X(a.x2, 2), i1 - 1), y = py(S.Y(a.y)), xa = px(ia), xe = ie == null ? right : px(ie);
+          if (gone(a) || off(y, y)) return '';
           if (a.text) req({ text: a.text, ax: xe - 4, ay: y, anchor: 'end', side: a.below ? 1 : -1, tc: 'tx', g, pri: 1 });
           return '<g class="' + g + '"><line class="ln ' + (a.dash === false ? '' : 'dash') + '" x1="' + xa + '" x2="' + xe + '" y1="' + y + '" y2="' + y + '"/></g>';
         }
         if (a.t === 'zone') {
-          const ia = Math.max(S.X(a.x1, 0), x0), ie = a.x2 == null || a.x2 === 'end' ? null : Math.min(S.X(a.x2, 2), i1 - 1), ya = py(S.Y(a.y1)), yb = py(S.Y(a.y2)), xa = px(ia) - slot / 2, xe = ie == null ? right : px(ie) + slot / 2, y = Math.min(ya, yb), h = Math.max(2, Math.abs(ya - yb));
-          if (a.text) req({ text: a.text, box: { x1: xa, x2: Math.max(xa + 2, xe), y1: y, y2: y + h }, tc: 'tx sm', g, pri: 1 });
-          return '<g class="' + g + '"><rect class="fl" fill-opacity="' + (a.op || 0.2) + '" x="' + xa + '" y="' + y + '" width="' + Math.max(2, xe - xa) + '" height="' + h + '"/><rect class="ln" fill="none" stroke-opacity=".7" x="' + xa + '" y="' + y + '" width="' + Math.max(2, xe - xa) + '" height="' + h + '"/>' + (a.ce ? '<line class="ln dot" x1="' + xa + '" x2="' + xe + '" y1="' + (y + h / 2) + '" y2="' + (y + h / 2) + '"/>' : '') + '</g>';
+          const ia = Math.max(S.X(a.x1, 0), x0), ie = a.x2 == null || a.x2 === 'end' ? null : Math.min(S.X(a.x2, 2), i1 - 1), ya = py(S.Y(a.y1)), yb = py(S.Y(a.y2)), xa = px(ia) - slot / 2, xe = ie == null ? right : px(ie) + slot / 2, y = cy(Math.min(ya, yb)), h = Math.max(2, cy(Math.max(ya, yb)) - y), mid = (ya + yb) / 2;
+          if (gone(a) || off(ya, yb)) return '';
+          if (a.text && !stub(S.X(a.x1, 0) < x0, Math.min(ya, yb) < m.t || Math.max(ya, yb) > base, xe - xa, h, a.text)) req({ text: a.text, box: { x1: xa, x2: Math.max(xa + 2, xe), y1: y, y2: y + h }, tc: 'tx sm', g, pri: a.out ? 0.5 : 1, near: o.clip, out: a.out }); // mức của lệnh được xếp chỗ trước nhãn cấu trúc
+          return '<g class="' + g + '"><rect class="fl" fill-opacity="' + (a.op || 0.2) + '" x="' + xa + '" y="' + y + '" width="' + Math.max(2, xe - xa) + '" height="' + h + '"/><rect class="ln" fill="none" stroke-opacity=".7" x="' + xa + '" y="' + y + '" width="' + Math.max(2, xe - xa) + '" height="' + h + '"/>' + (a.ce && !off(mid, mid) ? '<line class="ln dot" x1="' + xa + '" x2="' + xe + '" y1="' + mid + '" y2="' + mid + '"/>' : '') + '</g>';
         }
         if (a.t === 'line' || a.t === 'arrow') {
           const xa = px(S.X(a.x1)), xb = px(Math.min(S.X(a.x2), i1 - 1 + 8)), ya = py(S.Y(a.y1)), yb = py(S.Y(a.y2));
@@ -408,6 +425,7 @@
       // nhãn (đặt sau cùng, tự né nến và nhãn khác)
       reqs.sort((p, q) => p.pri - q.pri).forEach((q) => {
         const r = place(q);
+        if (!r) return;
         if (q.tc === 'sw' && r.ovl) { occL.pop(); return; } // nhãn swing phụ: hết chỗ thì bỏ, không đè lên nhãn khác
         if (q.kind === 'pill') {
           const below = r.y1 > q.ay, lx = clamp(q.ax, r.x1 + 4, r.x2 - 4), ly = below ? r.y1 : r.y2;

@@ -139,18 +139,18 @@
       out.push({ t: 'label', at: ix(s.mss.i, !buy), text: s.mss.k + (buy ? ' ▲' : ' ▼'), c: cb, pos: buy ? 'above' : 'below', lift: 2 });
       return out;
     };
-    // vùng TP/SL mờ của các setup khác: đã qua (kèm kết quả) hoặc đang chờ
-    const hm = (t) => new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(t));
-    const OUT = { pending: 'chờ', inzone: 'trong vùng', active: 'đang chạy', missed: 'lỡ', expired: 'hết hạn', tp1: 'TP1 ✔', tp2: 'TP2 ✔', tp1be: 'TP1 → BE', sl: 'SL ✖' };
+    // vùng TP/SL mờ của các setup khác (đã qua hoặc đang chờ): chỉ ghi mức giá; giờ và kết quả xem ở bảng Trạng thái lệnh
     const others = (res.recent || []).slice(0, 6).concat(res.setups).filter((x) => x !== s);
     const pastAnn = (rows, U) => {
       const out = [];
       others.forEach((o) => {
-        const x1 = ixAt(rows, m15[o.ready].t), x2 = o.exit != null ? Math.max(x1 + 1, ixAt(rows, m15[o.exit].t)) : 'end', b = o.dir === 'BUY', tag = (b ? 'MUA ' : 'BÁN ') + hm(m15[o.ready].t) + ' · ' + (OUT[o.state] || o.state);
+        if (o.exit != null && m15[o.exit].t < rows[0].t) return; // lệnh đã kết thúc trước cây nến đầu của khung này: không dồn vào mép trái
+        const x1 = ixAt(rows, m15[o.ready].t), x2 = o.exit != null ? Math.max(x1 + 1, ixAt(rows, m15[o.exit].t)) : 'end';
         const hi = (p, q) => [U(Math.max(p, q)), U(Math.min(p, q))];
         const sl = hi(o.entry, o.sl), tp = hi(o.entry, o.tp1);
-        out.push({ t: 'zone', x1, x2, y1: sl[0], y2: sl[1], text: 'SL ' + f2(o.sl), c: 'bear', op: 0.1, ce: true });
-        out.push({ t: 'zone', x1, x2, y1: tp[0], y2: tp[1], text: tag + ' · TP1 ' + f2(o.tp1), c: 'bull', op: 0.1, ce: true });
+        const side = o.dir === 'BUY' ? 1 : -1; // nhãn không lọt trong vùng thì đặt phía ngoài: SL về phía SL, TP về phía TP
+        out.push({ t: 'zone', x1, x2, y1: sl[0], y2: sl[1], text: 'SL ' + f2(o.sl), c: 'bear', op: 0.1, ce: true, out: side });
+        out.push({ t: 'zone', x1, x2, y1: tp[0], y2: tp[1], text: 'TP1 ' + f2(o.tp1), c: 'bull', op: 0.1, ce: true, out: -side });
       });
       return out;
     };
@@ -158,7 +158,7 @@
     const build0 = (rows, key, anns, extra, defStart) => {
       const S = mkS(rows, SYM.name + ' ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, Math.min(defStart || 0, rows.length - 20));
       const sn = SNAP && SNAP[key]; let rg = [ds, rows.length]; if (sn) { const e = Math.max(20, Math.min(rows.length, rows.length - sn.tail)); rg = [Math.max(0, e - sn.n), e]; }
-      const opt = Object.assign({ pos: mkPos(rows, U), range: rg, h: 320, slotMin: 1, frames: false, lastLine: true }, extra || {}, SHOT || {}); if (sn) opt.layers = sn.layers;
+      const opt = Object.assign({ pos: mkPos(rows, U), range: rg, h: 320, slotMin: 1, frames: false, lastLine: true, clip: true }, extra || {}, SHOT || {}); if (sn) opt.layers = sn.layers;
       const ch = put(hosts[key], S, anns(U).concat(pastAnn(rows, U)), opt);
       LVR.push({ key, S, ch, fig: hosts[key].closest('figure'), t: rows[rows.length - 1].t }); ZM.set(hosts[key].closest('figure'), { ch, len: rows.length, pad: (extra && extra.pad) || 12, s: rg[0], e: rg[1], def: [ds, rows.length] });
     };
