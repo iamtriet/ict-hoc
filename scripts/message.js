@@ -21,11 +21,13 @@ module.exports = function (A) {
 
   function setup(s, c) {
     const { cfg, res } = c, buy = s.dir === 'BUY', side = buy ? 'MUA' : 'BÁN', f = (x) => (+x).toFixed(cfg.dec);
-    const model = s.model === 'PA' ? 'Price Action' : s.model, t = ((A.CORE_TESTS || {})[cfg.id] || {})[s.model], mark = t ? (t.dv && t.dv[2] <= 0 ? ' ✖ lỗ khi đo trên giá Deriv' : t.ok ? ' ✔ đã kiểm chứng' : ' ✖ chưa đạt kiểm chứng') : '';
+    const model = s.model === 'PA' ? 'Price Action' : s.model, t = ((A.CORE_TESTS || {})[cfg.id] || {})[s.model], local = c.feed === 'mt5', lost = t && (local ? t.mt && t.mt.r[2] <= 0 : t.dv && t.dv[2] <= 0), mark = t ? (lost ? ' ✖ lỗ khi đo trên giá ' + (local ? 'MT5' : 'Deriv') : t.ok ? ' ✔ đã kiểm chứng' : ' ✖ chưa đạt kiểm chứng') : '';
     const limit = (buy ? 'BUY' : 'SELL') + ' LIMIT';
     const action = s.state === 'pending' ? '<b>' + limit + ' ' + f(s.entry) + '</b> · lệnh chờ ' + side.toLowerCase() + ', không vào ở giá hiện tại' : s.state === 'inzone' ? '<b>' + side + ' quanh ' + f(s.entry) + '</b> · giá đang trong vùng, chờ phản ứng' : s.state === 'active' ? '<b>' + side + ' tại ' + f(s.entry) + '</b> · nến xác nhận vừa đóng' : '<b>Entry ' + f(s.entry) + '</b>';
-    const head = [(buy ? '🟢' : '🔴') + ' <b>' + (s.state === 'pending' ? limit : side) + ' ' + cfg.name + '</b> · điểm <b>' + s.score + '</b> (' + s.grade + ')', model + mark].concat(c.after ? ['✅ Đã MSS sau cú quét ' + f(c.after.p) + ' (' + hm(c.after.t) + '): đủ điều kiện đặt lệnh'] : [], '',
+    const head = [(buy ? '🟢' : '🔴') + ' <b>' + (s.state === 'pending' ? limit : side) + ' ' + cfg.name + '</b> · điểm <b>' + s.score + '</b> (' + s.grade + ')', model + mark + (local ? ' · 🖥 giá MT5' : '')].concat(c.after ? ['✅ Đã MSS sau cú quét ' + f(c.after.p) + ' (' + hm(c.after.t) + '): đủ điều kiện đặt lệnh'] : [], '',
       action, 'SL ' + f(s.sl) + ' (rủi ro $' + f(s.risk) + cfg.unit + ')', 'TP1 ' + f(s.tp1) + ' (1:' + s.rr1 + ') · TP2 ' + f(s.tp2) + ' (1:' + s.rr2 + ')');
+    // máy MT5: mức nên nhập vào sàn, đã tính chênh mua / bán đang có
+    if (c.order) head.push('⌨️ <b>Nhập MT5</b> (' + c.order.type + '): ' + f(c.order.entry) + ' · SL ' + f(c.order.sl) + ' · TP ' + f(c.order.tp1) + ' / ' + f(c.order.tp2) + ' · đã tính chênh ' + f(c.spread));
     // giá lúc gửi và giờ nến tạo tín hiệu: để biết lệnh còn cách bao xa, giá đã chạy tới đâu
     const live = c.live != null ? c.live : res.price, waiting = s.state === 'pending' || s.state === 'inzone';
     head.push('💲 Giá lúc gửi <b>' + f(live) + '</b> · cách entry ' + f(Math.abs(live - s.entry)) + (s.t0 ? ' · tín hiệu từ nến đóng ' + hm(s.t0 + 900000) : ''));
@@ -58,7 +60,7 @@ module.exports = function (A) {
     const under = buy ? 'dưới ' : 'trên ', over = buy ? 'trên ' : 'dưới ', low = buy ? 'đáy' : 'đỉnh';
     const level = (l) => f(l.p) + ' (' + esc(short(l.name)) + ')';
     const link = '<a href="' + c.site + '">Mở trang phân tích</a> · không phải lời khuyên đầu tư';
-    const t = ((A.CORE_TESTS || {})[cfg.id] || {}).ICT, losing = t && !(t.ok && !(t.dv && t.dv[2] <= 0));
+    const t = ((A.CORE_TESTS || {})[cfg.id] || {}).ICT, losing = t && (c.feed === 'mt5' ? t.mt && t.mt.r[2] <= 0 : !(t.ok && !(t.dv && t.dv[2] <= 0)));
     const waitLine = (p) => '⏳ Mốc chờ mới: quét ' + (p.dir === 1 ? 'dưới ' : 'trên ') + level(p.level) + (p.mss != null ? ', rồi MSS ' + (p.dir === 1 ? 'trên ' : 'dưới ') + f(p.mss) : '') + ' · còn cách $' + f(Math.abs(e.price - p.level.p));
     const L = [];
     if (e.type === 'plan') {
@@ -95,8 +97,12 @@ module.exports = function (A) {
       if (!what) return null;
       L.push(what[0] + ' <b>' + name + ' · ' + side + ': ' + what[1] + '</b>', what[2]);
     } else return null;
-    return L.concat(['', link]).join('\n');
+    return L.concat(['', c.feed === 'mt5' ? '🖥 Giá MT5 · ' + link : link]).join('\n');
   }
+
+  /* chuyển qua lại giữa máy MT5 và bot web (scripts/standby.js) */
+  const takeover = (ids) => '☁️ <b>Máy MT5 không gửi tin quá 20 phút</b>: bot web gửi thay cho ' + ids.join(', ') + ' (giá Deriv / Coinbase, lệch ít nhiều so với MT5). Lệnh máy đã gửi không được theo dõi tiếp ở đây.';
+  const resumed = (ids, minutes) => (minutes == null ? '🖥 <b>Bắt đầu gửi tin từ máy MT5</b> cho ' + ids.join(', ') + ' (giá sàn của bạn). Bot web im lặng khi máy đang chạy.' : '🖥 <b>Máy MT5 gửi tin trở lại</b> cho ' + ids.join(', ') + ' (sau khoảng ' + minutes + ' phút).');
 
   function session(x, rows, events) {
     const ev = (events || []).filter((e) => (!e.country || e.country === 'USD') && e.impact === 'High' && e.t >= x.t && e.t <= x.end).sort((a, b) => a.t - b.t);
@@ -110,5 +116,5 @@ module.exports = function (A) {
     return lines.join('\n');
   }
   const connected = (rows, min) => ['✅ <b>Kết nối thành công</b> · gửi setup từ ' + min + ' điểm'].concat(rows.map((r) => symbolLine(r) + ' · ' + r.setups + ' setup')).join('\n');
-  return { setup, stage, session, heartbeat, connected, symbolLine, progress, plain, LIMIT };
+  return { setup, stage, takeover, resumed, session, heartbeat, connected, symbolLine, progress, plain, LIMIT };
 };

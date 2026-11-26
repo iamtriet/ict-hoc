@@ -162,6 +162,8 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
   } catch (e) { fail('trang trực tiếp: ' + e.message); }
   // tin Telegram từng bước: chờ quét → đã quét → hủy / lệnh limit → khớp / TP / SL
   try { ok('Tin từng bước: kịch bản đúng, dữ liệu mẫu ' + require('./stages-test.js')(win, ROOT)); } catch (e) { fail('tin từng bước: ' + e.message); }
+  // chạy từ máy MT5: tin ghim "đang chạy" để bot web nhường, tin có mức nhập sàn
+  try { await require('./standby-test.js')(win); ok('Máy MT5: tin ghim chuyển dự phòng và tin nhập sàn đúng'); } catch (e) { fail('máy MT5: ' + e.message); }
   // ước tính lệnh đang hình thành: đúng phía, khớp dòng theo dõi của lõi, không đụng tới danh sách lệnh
   try {
     const SG = win.ICT.signals; let wait = 0, swept = 0;

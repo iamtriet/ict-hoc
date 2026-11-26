@@ -44,7 +44,7 @@ python local\mt5_server.py --open --gold XAUUSDm --btc BTCUSDm --port 8765
 - Chỉ máy này truy cập được (nghe ở `127.0.0.1`); điện thoại không vào được.
 - Giá và nến theo **bid**, giống biểu đồ MT5. Lệnh mua khớp ở giá ask, cao hơn một khoảng chênh ghi ở đầu trang.
 - Tín hiệu vẫn chỉ xác nhận khi nến 15m đóng.
-- Bot Telegram vẫn dùng Deriv. Hai nguồn lệch nhau vài chục cent đã có thể cho thiên hướng và tín hiệu khác nhau.
+- Bot Telegram trên GitHub dùng Deriv / Coinbase. Muốn tin Telegram theo giá MT5: bấm đúp `local\ICT-Telegram-CaiDat.bat` một lần (cần Node.js), xem mục “Gửi tin từ máy MT5” trong [ALERTS.md](../ALERTS.md). Hai nguồn lệch nhau vài chục cent đã có thể cho thiên hướng và tín hiệu khác nhau.
 - Hai quy tắc ICT và Price Action **chưa cho thấy lợi thế** trên giá đã đo (bảng dưới).
 - Nội dung giáo dục, không phải lời khuyên đầu tư.
 

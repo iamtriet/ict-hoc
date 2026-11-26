@@ -9,6 +9,10 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+rem Neu da cai Telegram cho may nay (ICT-Telegram-CaiDat.bat) thi mo them cua so gui tin
+if exist "%LOCALAPPDATA%\ICT-Telegram\config.env" (
+  where node >nul 2>nul && start "ICT Telegram - MT5" cmd /c "node local\telegram.js & pause"
+)
 python local\mt5_server.py --open
 echo.
 pause

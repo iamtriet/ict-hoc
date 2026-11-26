@@ -27,6 +27,26 @@ Số tin: mỗi mã khoảng 8–12 tin một ngày (đo mô phỏng). Muốn b�
 
 Tin đến sau khi nến đóng; nếu bot vừa chạy lại sau khi ngừng thì chuyện đã cũ không được báo lại. ICT đang lỗ trong kiểm chứng trên cả hai mã: các tin này để quan sát và học, không phải lời khuyên đầu tư.
 
+## Gửi tin từ máy MT5 (giá sàn), bot web dự phòng
+
+Máy đang mở MT5 có thể tự gửi tin bằng **giá sàn của bạn**; bot GitHub (giá Deriv / Coinbase) chỉ gửi khi máy ngừng. Cài một lần trên **một** máy:
+
+1. Cần Node.js (bản LTS, https://nodejs.org), ngoài MT5 và Python như trong [local/README.md](local/README.md).
+2. Bấm đúp `local\ICT-Telegram-CaiDat.bat`. Notepad mở tệp cấu hình: điền `TG_BOT_TOKEN` và `TG_CHAT_ID`, lưu, đóng. Cửa sổ gửi một tin 🧪 để kiểm tra.
+   Tệp nằm ở `%LOCALAPPDATA%\ICT-Telegram\config.env`, ngoài thư mục dự án nên không bị đồng bộ hay đẩy lên GitHub. Không gửi tệp này cho ai.
+3. Chạy `local\ICT-Local.bat` như thường. Có thêm cửa sổ **ICT Telegram - MT5**; giữ cả hai cửa sổ mở.
+
+Cách chuyển qua lại:
+- Máy cập nhật một **tin ghim** "ICT-MT5 đang gửi tin" sau mỗi lượt quét (không kêu). Bot web đọc tin ghim: còn mới thì im lặng cho các mã đó.
+- Máy tắt, ngủ, mất mạng hoặc MT5 không có giá quá **20 phút**: bot web báo ☁️ rồi gửi thay. Bot web chỉ chạy lại theo nhịp của nó nên có thể trễ thêm vài phút.
+- Máy chạy lại: máy báo 🖥, bot web lại im lặng.
+- Đừng bỏ ghim tin đó hoặc ghim tin khác trong cuộc trò chuyện với bot; nếu lỡ, máy tự ghim lại ở lượt sau.
+- Quanh lúc chuyển, có thể có tin trùng hoặc tin từng bước bị lỡ. Lệnh limit còn hiệu lực mà máy chưa kịp gửi thì bot web gửi bù. Bên nào chỉ theo dõi tiếp (khớp / TP / SL) lệnh do chính nó gửi.
+
+Tin từ máy ghi "🖥 giá MT5" và có dòng **Nhập MT5**: mức đã tính chênh mua/bán lúc gửi. Muốn tắt việc nhường (bot web luôn gửi): đặt biến `STANDBY` = `off`. Trong tệp cấu hình của máy cũng đặt được `SYMBOLS`, `STAGES`, `MIN_SCORE`, `SESSIONS`.
+
+Giá khớp sàn không làm quy tắc tốt hơn: đo trên giá MT5, ICT và Price Action vẫn lỗ (bảng trong local/README.md).
+
 ## Cài đặt (một lần, khoảng 5 phút)
 
 1. **Tạo bot Telegram.** Mở Telegram, chat với `@BotFather`, gửi `/newbot`, đặt tên. BotFather trả về một **token**
@@ -73,6 +93,7 @@ Công cụ (web và bot) không đưa lệnh quanh các tin USD mức High: lãi
 | `BTC_FEED` | Đặt `binance` để dùng lại Binance BTC/USDT | Coinbase |
 | `PRICE_OFFSET` | Chỉ dùng khi vàng lấy từ PAXG: `spot` (tự quy đổi theo giá vàng spot), `none`, hoặc một số cộng vào giá (ví dụ `2.5`) | spot |
 | `HB_HOUR` | Giờ UTC gửi tin báo sống hằng ngày (0 = 07:00 giờ Việt Nam) | 0 |
+| `STANDBY` | `off`: bot web luôn gửi, không nhường cho máy MT5 | nhường khi máy đang chạy |
 | `STAGES` | Tin từng bước của lệnh (xem mục trên): `sweep`, `swing`, `cancel`, `order`, `plan`, hoặc `off` | sweep,swing,cancel,order |
 | `SESSIONS` | Các phiên được báo giờ bắt đầu, ngăn cách bằng dấu phẩy: `asia`, `london`, `ny`, `lc` (London Close), `pm` (NY PM). `off` để tắt | asia,london,ny |
 | `SITE_URL` | Liên kết đặt trong tin nhắn | trang phân tích của bạn |
