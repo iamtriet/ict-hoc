@@ -108,6 +108,20 @@
     ['Phá biên phiên Á giờ London', '15m', [-34.5, 7], [-72.4, -62.5], 0], ['London + xu hướng', '15m', [0.3, 14.3], [-16.3, -32.2], 0], ['Phá biên mở phiên New York (ORB)', '15m', [-245.9, -169.1], [-30.3, -58.1], 0], ['ORB + xu hướng', '15m', [-55.4, -60.1], [17.7, -7.3], 0], ['Động lượng trong ngày (Gao; Shen–Urquhart)', '15m', [-59.6, -29.2], [-208.1, -202], 0],
   ];
 
+  /* ---------- hai mô hình chính qua cùng tiêu chí (A.analyze, điểm ≥ 50, mỗi nến 15m, đã trừ phí) ----------
+     Cùng cách ghi như trên; x2 = profit factor [A, B] khi phí gấp đôi. Vàng 09/2020 – 11/2026, BTC 01/2019 – 11/2026. */
+  A.CORE_TESTS = {
+    XAUUSD: { ICT: { ok: true, a: [314, 45, 29.6, 1.16], b: [342, 43, 46.4, 1.22], x2: [1.03, 1.05] }, PA: { ok: false, a: [94, 35, -24.4, 0.63], b: [130, 40, 15.3, 1.18], x2: [0.53, 0.99] } },
+    BTCUSD: { ICT: { ok: false, a: [943, 36, -169.6, 0.77], b: [508, 35, -96.2, 0.77] }, PA: { ok: false, a: [351, 35, -100.5, 0.65], b: [223, 34, -67.5, 0.65] } },
+  };
+  /* hiệu ứng và hệ đã công bố riêng cho vàng (chỉ để minh bạch: không cái nào đạt). Mỗi dòng: tên, [nhãn giai đoạn, tổng R sau phí]...
+     Hệ trong ngày: PAXG 15m và vàng tương lai GC=F nến 1 giờ. Hệ khung ngày (chỉ mua): GC=F nến ngày, ba giai đoạn thị trường. */
+  const intra = (a, b, c) => [['2020–23', a], ['2024–26', b], ['GC=F 1 giờ, 07/2024–26', c]], reg = (a, b, c) => [['2001–12', a], ['2013–18', b], ['2019–26', c]];
+  A.GOLD_TESTS = [
+    ['Qua đêm: mua 13:30 → 08:15 New York (Blose và cộng sự, 2018)', intra(-16.8, 34.3, 11.2)], ['Phiên ngày: bán 08:15 → 13:30 New York', intra(-5.9, -0.2, 0.8)], ['Phiên Á: mua 19:00 → 03:00 New York', intra(-4.7, 9.4, -15.3)], ['Trước giờ London: mua 18:00 → 02:00 New York', intra(-6.1, 8.9, -13.3)],
+    ['Mua ngày thứ Sáu', reg(112, -5.9, 25.7)], ['Hiệu ứng mùa thu: giữ tháng 9 và 11 (Baur)', reg(27.1, -12.6, -4.5)], ['SMA 10 tháng, chỉ mua (Faber)', reg(44.6, -10.8, 29.8)], ['SMA 200 ngày, chỉ mua', reg(34.1, -4.3, 24.7)], ['Động lượng 1–3–12 tháng, chỉ mua', reg(28, -7.5, 28.1)], ['Turtle 20/10, chỉ mua', reg(25.4, -3.8, 10.7)], ['Turtle 55/20, chỉ mua', reg(22.8, -8.9, 25.5)],
+  ];
+
   /* ---------- trạng thái hiện tại ---------- */
   /* F = { m15, h4, d1 } nến đã đóng. opt: sym, news (kết quả newsState), bias (kết quả bias HTF của công cụ) */
   A.models = function (F, opt) {

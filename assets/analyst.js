@@ -266,7 +266,7 @@
   function setupHtml(s, res, k) {
     const st = ST[s.state] || ['', ''], now = s.model === 'PA' && s.state === 'active' && s.ready === res.n - 1 ? ['Nến xác nhận vừa đóng: vào được', 'ok'] : st;
     return '<section class="an-card an-setup ' + (s.dir === 'BUY' ? 'b' : 's') + '" data-k="' + k + '">' +
-      '<div class="an-h"><span class="an-dir ' + (s.dir === 'BUY' ? 'b' : 's') + '">' + (s.dir === 'BUY' ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(s.title) + '</h2>' + chip('Điểm ' + s.score + ' · ' + s.grade, s.grade === 'A+' ? 'ok' : '') + chip(now[0], now[1]) + '</div>' +
+      '<div class="an-h"><span class="an-dir ' + (s.dir === 'BUY' ? 'b' : 's') + '">' + (s.dir === 'BUY' ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(s.title) + '</h2>' + chip('Điểm ' + s.score + ' · ' + s.grade, s.grade === 'A+' ? 'ok' : '') + chip(now[0], now[1]) + coreChip(s.model) + '</div>' +
       '<div class="an-trade"><div><i>Entry</i><b>' + f2(s.entry) + '</b></div><div><i>Stop loss</i><b class="no">' + f2(s.sl) + '</b></div><div><i>TP1 · 1:' + s.rr1 + '</i><b class="ok">' + f2(s.tp1) + '</b></div><div><i>TP2 · 1:' + s.rr2 + '</i><b class="ok">' + f2(s.tp2) + '</b></div><div><i>Rủi ro</i><b>$' + f2(s.risk) + SYM.unit + '</b></div></div>' +
       '<p class="an-tpn">TP1: ' + esc(s.tp1n) + '. TP2: ' + esc(s.tp2n) + '.</p>' +
       figs() + '<p class="muted an-leg">Vùng xanh/đỏ nhạt trên biểu đồ là TP1/SL của các setup khác: đã qua (ghi kết quả) hoặc đang chờ. Zoom out để xem các setup cũ hơn.</p>' +
@@ -288,11 +288,23 @@
   const mdState = (x) => (x.state === 'pending' ? 'Chờ phá mức (' + x.type + ')' + (x.far > 0.04 ? ' · cách giá ' + (x.far * 100).toFixed(0) + '%' : '') : x.state === 'active' ? 'Đã khớp, đang chạy' : 'Đang giữ từ trước');
   const sg = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + 'R';
   /* bảng tổng hợp: mọi lệnh đang gợi ý, cả hai mô hình chính lẫn mô hình bổ sung */
+  const coreT = (m) => (A.CORE_TESTS[SYM.id] || {})[m];
+  const coreMark = (m) => { const c = coreT(m); return c ? (c.ok ? ' <span class="up">✔ đã kiểm chứng</span>' : ' <span class="dn">✖ chưa đạt</span>') : ''; };
+  const coreChip = (m) => { const c = coreT(m); return c ? chip(c.ok ? '✔ Đã kiểm chứng nhiều năm' : '✖ Chưa đạt kiểm chứng', c.ok ? 'ok' : 'no') : ''; };
+  /* bảng kiểm chứng nhiều năm của hai mô hình chính trên mã đang xem */
+  function coreTable() {
+    const t = A.CORE_TESTS[SYM.id]; if (!t) return '';
+    return '<h3>Hai mô hình chính trên ' + SYM.name + ' (cùng tiêu chí)</h3><div class="tblw"><table><tr><th>Mô hình</th><th>' + (SYM.id === 'XAUUSD' ? '09/2020–2023' : '2019–2023') + '</th><th>2024–2026</th><th>Phí gấp đôi (PF)</th><th>Kết luận</th></tr>' +
+      ['ICT', 'PA'].map((m) => { const c = t[m]; return '<tr><td><b>' + (m === 'PA' ? 'Price Action' : 'ICT') + '</b></td><td>' + evText(c.a) + '</td><td>' + evText(c.b) + '</td><td>' + (c.x2 ? c.x2[0] + ' · ' + c.x2[1] : '–') + '</td><td class="' + (c.ok ? 'up' : 'dn') + '"><b>' + (c.ok ? 'Đạt' : 'Chưa đạt') + '</b></td></tr>'; }).join('') + '</table></div>';
+  }
+  const goldTable = () => '<details><summary>' + A.GOLD_TESTS.length + ' hiệu ứng và hệ riêng cho vàng đã thử thêm (không cái nào đạt)</summary><div class="tblw"><table><tr><th>Mô hình</th><th>Giai đoạn 1</th><th>Giai đoạn 2</th><th>Giai đoạn 3</th></tr>' +
+    A.GOLD_TESTS.map((r) => '<tr><td>' + esc(r[0]) + '</td>' + r[1].map((p) => '<td><span class="muted">' + esc(p[0]) + '</span><br><span class="' + (p[1] > 0 ? 'up' : 'dn') + '">' + (p[1] > 0 ? '+' : '') + p[1] + 'R</span></td>').join('') + '</tr>').join('') +
+    '</table></div><p class="muted">Hệ trong ngày phải đạt ở cả PAXG hai giai đoạn lẫn vàng tương lai thật; hệ chỉ mua khung ngày phải đạt ở cả ba giai đoạn. Các hệ chỉ mua đều lỗ trong 2013–2018 (vàng giảm và đi ngang): phần lãi chủ yếu đến từ việc vàng tăng, không phải từ điểm vào.</p></details>';
   function allHtml(res) {
     const md = mdShown(res); if (!res.setups.length && !md.length) return '';
     const row = (x, kind, name, ref, tgt, st) => '<tr><td>' + kind + '</td><td><a href="#" data-go="' + ref + '">' + esc(name) + '</a></td><td class="' + (x.dir === 'BUY' ? 'up' : 'dn') + '">' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td>' + tgt + '</td><td><b>' + x.score + '</b> · ' + x.grade + '</td><td>' + esc(st) + '</td></tr>';
     return '<section class="an-card"><div class="an-h"><h2>Tất cả lệnh đang gợi ý</h2></div><div class="tblw"><table><tr><th>Nhóm</th><th>Mô hình</th><th>Hướng</th><th>Entry</th><th>SL</th><th>Chốt lời</th><th>Điểm</th><th>Trạng thái</th></tr>' +
-      res.setups.map((x, k) => row(x, '<b>Chính</b>', x.title, 'k' + k, 'TP1 ' + f2(x.tp1) + ' · TP2 ' + f2(x.tp2), (ST[x.state] || [x.state])[0])).join('') +
+      res.setups.map((x, k) => row(x, '<b>Chính</b>' + coreMark(x.model), x.title, 'k' + k, 'TP1 ' + f2(x.tp1) + ' · TP2 ' + f2(x.tp2), (ST[x.state] || [x.state])[0])).join('') +
       md.map((x, i) => row(x, 'Bổ sung ' + x.tf, x.name, 'm' + i, x.tf === '1D' && (x.key === 'nr7' || x.key === 'wil') ? 'Cuối ngày UTC' : 'Theo quy tắc thoát', mdState(x))).join('') +
       '</table></div><p class="muted">Điểm của hai nhóm dùng <b>thang khác nhau</b> nên không so trực tiếp.</p></section>';
   }
@@ -315,7 +327,11 @@
     const md = res.md; if (!md) return '';
     let h = '<section class="an-card an-mdhead"><div class="an-h"><h2>Mô hình bổ sung</h2>' + chip(md.list.length ? md.list.length + ' mô hình đạt kiểm chứng' : 'Chưa có mô hình đạt', md.list.length ? 'ok' : 'info') + '</div>';
     if (!md.list.length) {
-      h += '<p>Đã thử ' + A.MODEL_TESTS.length + ' cấu hình của các hệ giao dịch đã công bố trên dữ liệu nhiều năm của ' + SYM.name + ': <b>chưa cấu hình nào đạt tiêu chí</b> (phần lớn lãi từ 2024 nhưng lỗ giai đoạn 2020–2023, hoặc ngược lại). Vì vậy không hiển thị lệnh bổ sung cho mã này. Chọn mã BTCUSD để xem các mô hình đã đạt.</p>' + testTable() + '</section>';
+      const good = ['ICT', 'PA'].filter((m) => (coreT(m) || {}).ok);
+      h = '<section class="an-card an-mdhead"><div class="an-h"><h2>Mô hình đã kiểm chứng trên ' + SYM.name + '</h2>' + chip(good.length ? good.join(', ') + ' đạt' : 'Chưa có mô hình đạt', good.length ? 'ok' : 'info') + '</div>';
+      h += '<p>' + (good.length ? 'Trong mọi mô hình đã đo, <b>chỉ ' + good.join(', ') + '</b> (mô hình chính, lệnh hiển thị ở phía trên) đạt tiêu chí trên ' + SYM.name + '. ' : '') + 'Đã thử thêm ' + (A.MODEL_TESTS.length + (SYM.id === 'XAUUSD' ? A.GOLD_TESTS.length : 0)) + ' cấu hình của các hệ đã công bố: <b>không cấu hình nào đạt</b>, nên không hiển thị lệnh bổ sung cho mã này.</p>' + coreTable() +
+        (good.length ? '<div class="callout warn"><p><b>Lợi thế của ICT trên vàng mỏng:</b> profit factor khoảng 1.2, từng sụt khoảng 18R, năm 2023 lỗ nhẹ, và khi phí gấp đôi thì gần hòa vốn (PF 1.03–1.05). Hãy kiểm tra spread của sàn bạn dùng.</p></div>' : '') +
+        (SYM.id === 'XAUUSD' ? goldTable() : '') + testTable() + '</section>';
       return '<div id="an-md">' + h + '</div>';
     }
     h += '<p>Các hệ giao dịch đã công bố, dùng tham số gốc, độc lập với hai mô hình chính và chưa gửi Telegram. Điểm = bằng chứng kiểm chứng của mô hình (tối đa 60) + bối cảnh xu hướng hiện tại (tối đa 40).</p>' +
@@ -330,7 +346,7 @@
         md.holding.map((x) => '<tr><td>' + esc(x.name) + '</td><td class="' + (x.dir === 'BUY' ? 'up' : 'dn') + '">' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + new Date(x.since).toLocaleDateString('vi-VN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td class="' + (x.R >= 0 ? 'up' : 'dn') + '">' + sg(x.R) + '</td><td>' + x.score + '</td><td>' + esc(x.exitRule) + '</td></tr>').join('') + '</table></div>';
     }
     h += '<details><summary>Mô tả và kiểm chứng từng mô hình đạt chuẩn</summary><div class="tblw"><table><tr><th>Mô hình</th><th>Quy tắc</th><th>2019–2023</th><th>2024–2026</th></tr>' +
-      md.list.map((k) => { const m = A.MODELS[k], ev = m.ev[SYM.id]; return '<tr><td><b>' + esc(m.n) + '</b><br><span class="muted">' + esc(m.by) + '</span></td><td>' + esc(m.d) + '</td><td>' + evText(ev.a) + '</td><td>' + evText(ev.b) + '</td></tr>'; }).join('') + '</table></div></details>' + testTable() + '</section>';
+      md.list.map((k) => { const m = A.MODELS[k], ev = m.ev[SYM.id]; return '<tr><td><b>' + esc(m.n) + '</b><br><span class="muted">' + esc(m.by) + '</span></td><td>' + esc(m.d) + '</td><td>' + evText(ev.a) + '</td><td>' + evText(ev.b) + '</td></tr>'; }).join('') + '</table></div></details>' + coreTable() + testTable() + '</section>';
     return '<div id="an-md">' + h + mdShown(res).map(mdCard).join('') + '</div>';
   }
   function mdCharts(card, F, x) {

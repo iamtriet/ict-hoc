@@ -85,6 +85,9 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
     if (nr.length !== 1 || nr[0].dir !== 1 || nr[0].entry !== 101 || nr[0].risk !== 2) fail('quy tắc NR7 sai trên chuỗi dựng sẵn: ' + JSON.stringify(nr));
     if (!bad) ok('Quy tắc Turtle và NR7 đúng trên chuỗi dựng sẵn');
   }
+  // nhãn "đã kiểm chứng" của hai mô hình chính phải khớp tiêu chí tính từ chính số liệu công bố
+  for (const id of ids) for (const m of ['ICT', 'PA']) { const c = (A.CORE_TESTS[id] || {})[m]; if (!c) { fail('thiếu số liệu kiểm chứng ' + id + ' ' + m); continue; } const want = c.a[2] > 0 && c.b[2] > 0 && c.a[3] >= 1.15 && c.b[3] >= 1.15 && c.a[0] + c.b[0] >= 40; if (want !== c.ok) fail('nhãn kiểm chứng sai: ' + id + ' ' + m); }
+  if (!bad) ok('Nhãn kiểm chứng của ICT và Price Action khớp số liệu');
   // lịch tin: cửa sổ đứng ngoài đúng theo từng loại tin
   const fb = A.fallbackEvents(Date.UTC(2026, 10, 25)), has = (t, ti) => fb.some((e) => e.t === t && e.title === ti);
   if (!has(Date.UTC(2026, 11, 4, 13, 30), 'Non-Farm Employment Change') || !has(Date.UTC(2026, 11, 9, 19, 0), 'Federal Funds Rate')) fail('lịch dựng sẵn sai ngày NFP/FOMC');
