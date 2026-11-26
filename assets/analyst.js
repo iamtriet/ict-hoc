@@ -34,6 +34,7 @@
   const cfgGet = () => { try { return JSON.parse(localStorage.getItem('ict.an.cfg')) || {}; } catch (e) { return {}; } };
   const cfgSet = (o) => { try { localStorage.setItem('ict.an.cfg', JSON.stringify(Object.assign(cfgGet(), o))); } catch (e) { /* bỏ qua */ } };
   let RAW = null, BIG = null, OUT = null, running = false, btRun = 0, ASOF = null, SNAP = null, VIEW = null; const UI = { t: 0 };
+  let SHOT = null; // tuỳ chọn biểu đồ khi dựng ảnh cho bot
 
   /* ---------- dữ liệu ---------- */
   let HI = 0; // máy chủ đã trả lời lần trước: được thử đầu tiên
@@ -117,7 +118,7 @@
     // vùng TP/SL mờ của các setup khác: đã qua (kèm kết quả) hoặc đang chờ
     const hm = (t) => new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(t));
     const OUT = { pending: 'chờ', inzone: 'trong vùng', active: 'đang chạy', missed: 'lỡ', expired: 'hết hạn', tp1: 'TP1 ✔', tp2: 'TP2 ✔', tp1be: 'TP1 → BE', sl: 'SL ✖' };
-    const others = (res.recent || []).concat(res.setups.filter((x) => x !== s));
+    const others = (res.recent || []).concat(res.setups).filter((x) => x !== s);
     const pastAnn = (rows, U) => {
       const out = [];
       others.forEach((o) => {
@@ -133,7 +134,7 @@
     const build0 = (rows, key, anns, extra, defStart) => {
       const S = mkS(rows, SYM.name + ' ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, Math.min(defStart || 0, rows.length - 20));
       const sn = SNAP && SNAP[key]; let rg = [ds, rows.length]; if (sn) { const e = Math.max(20, Math.min(rows.length, rows.length - sn.tail)); rg = [Math.max(0, e - sn.n), e]; }
-      const opt = Object.assign({ pos: mkPos(rows, U), range: rg, h: 320, slotMin: 1, frames: false, lastLine: true }, extra || {}); if (sn) opt.layers = sn.layers;
+      const opt = Object.assign({ pos: mkPos(rows, U), range: rg, h: 320, slotMin: 1, frames: false, lastLine: true }, extra || {}, SHOT || {}); if (sn) opt.layers = sn.layers;
       const ch = put(hosts[key], S, anns(U).concat(pastAnn(rows, U)), opt);
       LVR.push({ key, S, ch, fig: hosts[key].closest('figure'), t: rows[rows.length - 1].t }); ZM.set(hosts[key].closest('figure'), { ch, len: rows.length, pad: (extra && extra.pad) || 12, s: rg[0], e: rg[1], def: [ds, rows.length] });
     };
@@ -237,6 +238,38 @@
     out.toBlob((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); }, 'image/png');
   }
   const planText = (s, res) => [SYM.name + ' ' + s.dir + ' — ' + s.title, 'Entry: ' + f2(s.entry) + (s.zone ? ' (vùng ' + f2(s.zone.bot) + '–' + f2(s.zone.top) + ')' : ''), 'SL: ' + f2(s.sl) + '  (rủi ro $' + f2(s.risk) + SYM.unit + ')', 'TP1: ' + f2(s.tp1) + ' (1:' + s.rr1 + ') — ' + s.tp1n, 'TP2: ' + f2(s.tp2) + ' (1:' + s.rr2 + ') — ' + s.tp2n, 'Điểm ' + s.score + '/100 (' + s.grade + ') · ' + A.tm(res.now), '', plain(s.story.join('\n')), '', 'Vô hiệu: ' + s.invalid.join(' | '), 'Nội dung giáo dục, không phải lời khuyên đầu tư.'].join('\n');
+
+  /* ---------- ảnh cho bot Telegram (chạy trong trình duyệt ẩn, scripts/shot.js): mỗi khung của một setup thành một ảnh, vẽ giống hệt trang web ----------
+     p = { sym, F: {m15,h1,h4,m5}, opt: tham số của A.analyze, id: mã setup, label?: dòng ghi chú trên đầu ảnh } → [{ key, data: dataURL PNG }] */
+  A.snapshot = async function (p) {
+    SYM = A.SYMS[p.sym] || A.SYMS.XAUUSD; SNAP = null; LVR.length = 0;
+    const F = p.F, res = A.analyze(F, p.opt), s = res.setups.concat(res.held || [], res.recent || []).find((x) => x.id === p.id);
+    if (!s) throw new Error('không thấy setup ' + p.id);
+    res.n = F.m15.length; res.m15 = F.m15;
+    document.body.innerHTML = '<div id="shot" style="width:900px"><section class="an-card" data-k="0" style="margin:0">' + figs() + '</section></div>';
+    const card = $('#shot .an-card'); $('.an-imgs', card).style.gridTemplateColumns = '1fr';
+    SHOT = { h: 520, noTg: true };
+    try { charts(card, F, res, s); await new Promise((r) => setTimeout(r, 250)); } finally { SHOT = null; }
+    const buy = s.dir === 'BUY', out = [];
+    for (const key of ['h4', 'h1', 'm15', 'm5']) {
+      const box = $('[data-ch=' + key + ']', card), svg = $('svg', box); if (!svg) continue;
+      const o = await svgImg(svg), W = o.w, top = p.label ? 104 : 84, foot = 28, H = top + o.h + foot, sc = 2, cv = document.createElement('canvas'); cv.width = W * sc; cv.height = H * sc;
+      const ctx = cv.getContext('2d'); ctx.scale(sc, sc); ctx.fillStyle = getComputedStyle(box).backgroundColor; ctx.fillRect(0, 0, W, H); ctx.textBaseline = 'alphabetic';
+      const text = (t, x, y, color, font) => { ctx.fillStyle = color; ctx.font = font; ctx.fillText(t, x, y); return x + ctx.measureText(t).width; };
+      let y = 26;
+      if (p.label) { text(p.label, 12, 22, '#f2b73c', 'bold 15px Arial'); y = 46; }
+      const x1 = text(SYM.name + ' · ' + (buy ? '▲ MUA' : '▼ BÁN') + ' · khung ' + TFS[key][0], 12, y, buy ? '#2fc7a2' : '#f2646f', 'bold 20px Arial');
+      text(TFS[key][2], x1 + 12, y, '#9aa7ba', '14px Arial'); y += 25;
+      let x = 12;
+      [['Entry ' + f2(s.entry), '#5fa8ff'], ['SL ' + f2(s.sl), '#f2646f'], ['TP1 ' + f2(s.tp1) + ' (1:' + s.rr1 + ')', '#2fc7a2'], ['TP2 ' + f2(s.tp2) + ' (1:' + s.rr2 + ')', '#2fc7a2']].forEach((c) => (x = text(c[0], x, y, c[1], 'bold 15px Arial') + 22));
+      text('Điểm ' + s.score + '/100 (' + s.grade + ') · ' + s.title + ' · ' + A.tm(res.now), 12, y + 22, '#e8edf5', '13px Arial');
+      ctx.drawImage(o.img, 0, top, W, o.h);
+      text('Kênh Học ICT · dữ liệu ' + SYM.src + ' · nội dung giáo dục, không phải lời khuyên đầu tư', 12, top + o.h + 18, '#7d8ba0', '12px Arial');
+      out.push({ key, data: cv.toDataURL('image/png') });
+    }
+    if (!out.length) throw new Error('không vẽ được khung nào');
+    return out;
+  };
 
   /* ---------- giao diện ---------- */
   const ST = { pending: ['Chờ giá hồi về vùng vào', 'info'], inzone: ['Giá đang trong vùng, chờ phản ứng', 'warn'], active: ['Có thể vào / đang chạy', 'ok'], tp1: ['Đã đạt TP1', 'ok'], tp2: ['Đã đạt TP2', 'ok'], tp1be: ['TP1 rồi về hòa vốn', 'info'], sl: ['Đã chạm SL', 'no'], missed: ['Bỏ lỡ: giá chạy trước', 'info'], expired: ['Hết hiệu lực', 'info'] };

@@ -88,6 +88,19 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
   // nhãn "đã kiểm chứng" của hai mô hình chính phải khớp tiêu chí tính từ chính số liệu công bố
   for (const id of ids) for (const m of ['ICT', 'PA']) { const c = (A.CORE_TESTS[id] || {})[m]; if (!c) { fail('thiếu số liệu kiểm chứng ' + id + ' ' + m); continue; } const want = c.a[2] > 0 && c.b[2] > 0 && c.a[3] >= 1.15 && c.b[3] >= 1.15 && c.a[0] + c.b[0] >= 40; if (want !== c.ok) fail('nhãn kiểm chứng sai: ' + id + ' ' + m); }
   if (!bad) ok('Nhãn kiểm chứng của ICT và Price Action khớp số liệu');
+  // ảnh setup cho Telegram: trình duyệt ẩn vẽ đủ 4 khung bằng mã của trang web
+  const shot = require('./shot.js');
+  if (!shot.findBrowser() || typeof WebSocket === 'undefined') console.log('ℹ bỏ qua kiểm tra ảnh Telegram (máy này không có Chrome/Edge hoặc Node chưa có WebSocket)');
+  else try {
+    const d = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'XAUUSD.json'), 'utf8')); if (!d.m5) throw new Error('dữ liệu mẫu thiếu nến 5m');
+    const F = { m15: rows(d.m15), h1: rows(d.h1), h4: rows(d.h4), m5: rows(d.m5) }, opt = { mode: 'both', minScore: 0, sym: 'XAUUSD', news: false };
+    let job = null;
+    for (let cut = 0; cut <= 200 && !job; cut++) { const T = F.m15[F.m15.length - 1 - cut].t + 900000, up = (a, ms) => a.filter((x) => x.t + ms <= T), f = { m15: up(F.m15, 900000), h1: up(F.h1, 3600000), h4: up(F.h4, 14400000), m5: up(F.m5, 300000) }, r = A.analyze(f, opt); if (r.setups.length && f.m5.length > 200) job = { sym: 'XAUUSD', F: f, opt, id: r.setups[0].id }; }
+    if (!job) throw new Error('không có setup mẫu để dựng ảnh');
+    const imgs = await shot(job);
+    if (imgs.map((x) => x.key).join() !== 'h4,h1,m15,m5' || imgs.some((x) => x.png.slice(1, 4).toString() !== 'PNG' || x.png.length < 30000 || x.png.length > 9e6)) throw new Error('ảnh dựng ra không đúng: ' + imgs.map((x) => x.key + ':' + x.png.length).join(' '));
+    ok('Ảnh Telegram: dựng đủ 4 khung (' + Math.round(imgs.reduce((a, x) => a + x.png.length, 0) / 1024) + ' KB)');
+  } catch (e) { fail('ảnh Telegram: ' + e.message); }
   // lịch tin: cửa sổ đứng ngoài đúng theo từng loại tin
   const fb = A.fallbackEvents(Date.UTC(2026, 10, 25)), has = (t, ti) => fb.some((e) => e.t === t && e.title === ti);
   if (!has(Date.UTC(2026, 11, 4, 13, 30), 'Non-Farm Employment Change') || !has(Date.UTC(2026, 11, 9, 19, 0), 'Federal Funds Rate')) fail('lịch dựng sẵn sai ngày NFP/FOMC');

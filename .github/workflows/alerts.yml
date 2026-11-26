@@ -7,7 +7,7 @@ on:
   push:
     # đổi mã của bot thì chạy lại ngay bằng mã mới (lượt đang chạy bị thay thế)
     branches: [main]
-    paths: ['.github/workflows/alerts.yml', 'scripts/notify.js', 'scripts/watch.js', 'scripts/chart.js', 'assets/engine.js', 'assets/analyst-core.js']
+    paths: ['.github/workflows/alerts.yml', 'scripts/notify.js', 'scripts/watch.js', 'scripts/chart.js', 'scripts/shot.js', 'scripts/render.html', 'assets/engine.js', 'assets/analyst-core.js', 'assets/analyst.js', 'assets/style.css']
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
@@ -27,7 +27,8 @@ permissions:
 
 concurrency:
   group: xau-alerts
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  # chạy tay có đánh dấu thử / gửi lại cũng thay lượt đang chạy, để có tin ngay thay vì xếp hàng chờ
+  cancel-in-progress: ${{ github.event_name == 'push' || inputs.test == true || inputs.force == true }}
 
 jobs:
   scan:
@@ -67,6 +68,7 @@ jobs:
           SESSIONS: ${{ vars.SESSIONS }}
           SYMBOLS: ${{ vars.SYMBOLS }}
           PRICE_OFFSET: ${{ vars.PRICE_OFFSET }}
+          SHOT: ${{ vars.SHOT }}
         run: node scripts/watch.js
 
       - name: Lưu danh sách đã thông báo

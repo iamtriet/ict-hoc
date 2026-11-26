@@ -1,8 +1,10 @@
 # Thông báo Telegram khi có setup XAUUSD
 
 GitHub Actions quét thị trường 24/7: ngay khi nến 15m đóng (nghe WebSocket Binance, trễ vài giây) và dự phòng 5 phút một lần (một lượt chạy giữ máy ~5h40 rồi tự gọi lượt kế tiếp; cron mỗi giờ chỉ là lưới an toàn vì cron của GitHub hay trễ hoặc bỏ lượt), dùng đúng lõi phân tích của trang web
-(`assets/analyst-core.js`). Chỉ khi có setup đạt điều kiện và điểm ≥ 55, bot gửi cho bạn một ảnh biểu đồ 15m kèm
-Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được gửi một lần. Không có setup thì bot im lặng.
+(`assets/analyst-core.js`). Chỉ khi có setup đạt điều kiện và điểm ≥ 55, bot gửi cho bạn một **album 4 ảnh** (4H, 1H, 15m, 5m)
+vẽ giống trang Phân tích (điểm quét, MSS/BOS, FVG, Order Block, hộp Entry/SL/TP) và một tin chữ phân tích phản ứng giá. Mỗi setup chỉ được gửi một lần. Không có setup thì bot im lặng.
+
+Ảnh được vẽ bằng Chrome ẩn trên máy chạy GitHub (`scripts/shot.js` mở `scripts/render.html`). Nếu không dựng được, bot gửi một ảnh 15m đơn giản như trước để không bỏ lỡ tín hiệu. Đặt biến `SHOT` = `off` nếu chỉ muốn ảnh đơn giản.
 
 ## Cài đặt (một lần, khoảng 5 phút)
 
@@ -19,7 +21,8 @@ Entry/SL/TP và phần phân tích phản ứng giá. Mỗi setup chỉ được
    gh secret set TG_CHAT_ID --repo iamtriet/ict-hoc
    ```
 4. **Chạy thử.** Vào tab *Actions → XAUUSD alerts → Run workflow*, tích **test**, bấm chạy. Vài chục giây sau bot gửi tin
-   "Kết nối thành công". Tích thêm **force** nếu muốn gửi lại setup đang có (nếu có).
+   "Kết nối thành công" và một album **ảnh thử** (lấy từ setup đang theo dõi hoặc đã qua, nếu có, ghi rõ không phải tín hiệu).
+   Tích thêm **force** nếu muốn gửi lại setup đang có (nếu có). Chạy thử hoặc gửi lại sẽ thay lượt đang chạy bằng lượt mới.
 
 ## Đứng ngoài quanh tin mạnh
 
