@@ -1,11 +1,12 @@
-/* ICT Hub — Trang "Phân tích & gợi ý lệnh": tải nến thật (Binance: PAXG/BTC/ETH/SOL), chạy lõi phân tích, vẽ ảnh đa khung, xuất PNG, kiểm chứng. */
+/* ICT Hub — Trang "Phân tích & gợi ý lệnh": tải nến thật (vàng: Deriv, dự phòng PAXG; BTC: Binance), chạy lõi phân tích, vẽ ảnh đa khung, xuất PNG, kiểm chứng. */
 (function () {
   'use strict';
   const ICT = window.ICT, A = ICT.analyst, esc = ICT.esc, $ = (s, r) => (r || document).querySelector(s);
   const HOSTS = ['https://api.binance.com', 'https://data-api.binance.vision'];
   let SYM = A.SYMS.XAUUSD; // mã đang phân tích
   const f2 = (x) => (+x).toFixed(SYM.dec);
-  const offOf = () => (SYM.id === 'XAUUSD' ? +cfgGet().off || 0 : 0); // chênh lệch giá chỉ dùng cho vàng (PAXG ↔ spot)
+  const onDeriv = () => !!(RAW && RAW.sym === SYM.id && RAW.feed === 'deriv');
+  const offOf = () => (SYM.id === 'XAUUSD' && !onDeriv() ? +cfgGet().off || 0 : 0); // chênh lệch giá chỉ dùng khi vàng phải lấy tạm từ PAXG
   /* chênh lệch PAXG ↔ giá vàng spot: lấy từ gold-api.com (cập nhật ~30 giây) và giá PAXG hiện tại, hiệu chỉnh lại mỗi 4 phút khi phân tích */
   /* lịch tin mạnh (USD, High): bot tải lịch rồi đăng lên nhánh data; trang đọc lại. Không có thì dùng lịch dựng sẵn (NFP, FOMC) */
   let CAL = { at: 0, events: [], until: 0, upd: null };
@@ -52,7 +53,9 @@
       go(0);
     });
   }
+  const DKEY = { '5m': 'm5', '15m': 'm15', '1h': 'h1', '4h': 'h4', '1d': 'd1' };
   async function klines(iv, total, bn) {
+    if (!bn && onDeriv()) { const k = DKEY[iv], r = await ICT.deriv.fetch(SYM.dsym, { [k]: total }); return r.open[k] ? r[k].concat([r.open[k]]) : r[k]; }
     let out = [], end = null; bn = bn || SYM.bn;
     while (out.length < total) {
       const lim = Math.min(1000, total - out.length), k = await getJSON('/api/v3/klines?symbol=' + bn + '&interval=' + iv + '&limit=' + lim + (end ? '&endTime=' + end : ''));
@@ -63,13 +66,19 @@
   const closed = (a) => a.slice(0, -1); // nến cuối cùng luôn là nến đang chạy
   const shift = (a, off) => (off ? a.map((x) => ({ t: x.t, o: x.o + off, h: x.h + off, l: x.l + off, c: x.c + off })) : a);
   async function loadAll(n15) {
+    // vàng: Deriv trước; không truy cập được thì tạm dùng PAXG trên Binance (quy đổi về giá spot)
+    if (SYM.feed === 'deriv') {
+      try { const id = SYM.id, r = await ICT.deriv.fetch(SYM.dsym, { m15: n15 || 999, h1: 999, h4: 999, m5: 999, d1: 999 }); if (r.m15.length < 400) throw new Error('ít nến'); return { m15: r.m15, h1: r.h1, h4: r.h4, m5: r.m5, d1: r.d1, at: Date.now(), sym: id, bn: SYM.bn, feed: 'deriv' }; } catch (e) { console.warn('Deriv:', e.message || e); }
+    }
     const bn = SYM.bn, id = SYM.id, [m15, h1, h4, m5, d1] = await Promise.all([klines('15m', n15 || 1000, bn), klines('1h', 1000, bn), klines('4h', 1000, bn), klines('5m', 1000, bn), klines('1d', 1000, bn)]); // 4H và 1D lấy dài cho mô hình bổ sung
-    return { m15: closed(m15), h1: closed(h1), h4: closed(h4), m5: closed(m5), d1: closed(d1), at: Date.now(), sym: id, bn };
+    return { m15: closed(m15), h1: closed(h1), h4: closed(h4), m5: closed(m5), d1: closed(d1), at: Date.now(), sym: id, bn, feed: 'binance' };
   }
   /* cập nhật gia tăng: chỉ hỏi vài nến gần nhất rồi ghép vào dữ liệu đang có (nhanh hơn tải lại cả nghìn nến); lệch quá thì ném lỗi để tải lại đầy đủ */
   const TFV = { m5: 300000, m15: 900000, h1: 3600000, h4: 14400000, d1: 86400000 }, CAP = { m5: 1100, m15: 1100, h1: 1100, h4: 1100, d1: 1100 };
   async function refreshRaw(raw) {
-    const spec = [['m15', '15m'], ['h1', '1h'], ['h4', '4h'], ['m5', '5m'], ['d1', '1d']], parts = await Promise.all(spec.map((x) => klines(x[1], 12, raw.bn))), nr = { sym: raw.sym, bn: raw.bn, at: Date.now() };
+    const spec = [['m15', '15m'], ['h1', '1h'], ['h4', '4h'], ['m5', '5m'], ['d1', '1d']], nr = { sym: raw.sym, bn: raw.bn, feed: raw.feed, at: Date.now() };
+    let parts;
+    if (raw.feed === 'deriv') { const r = await ICT.deriv.fetch(A.SYMS[raw.sym].dsym, { m15: 12, h1: 12, h4: 12, m5: 12, d1: 5 }); parts = spec.map((x) => r[x[0]].concat([r.open[x[0]] || { t: Infinity }])); } else parts = await Promise.all(spec.map((x) => klines(x[1], 12, raw.bn))); // phần tử cuối là nến đang chạy
     spec.forEach((x, i) => {
       const k = x[0], arr = raw[k].slice(), got = closed(parts[i]); if (!arr.length || !got.length) throw new Error('thiếu nến');
       if (got[0].t > arr[arr.length - 1].t + TFV[k]) throw new Error('lệch dữ liệu');
@@ -218,7 +227,7 @@
     const cv = document.createElement('canvas'); cv.width = W * sc; cv.height = 6000 * sc; const ctx = cv.getContext('2d'); ctx.scale(sc, sc);
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, 6000); ctx.fillStyle = fg; ctx.textBaseline = 'alphabetic';
     let y = pad + 18; ctx.font = 'bold 22px Arial'; ctx.fillText(SYM.name + ' · ' + (s ? s.dir + ' · ' + s.title : 'Phân tích đa khung'), pad, y); y += 24;
-    ctx.font = '13px Arial'; ctx.globalAlpha = 0.7; ctx.fillText(A.tm(res.now) + ' · dữ liệu ' + SYM.src + ' (Binance)' + (offOf() ? ' · đã cộng chênh lệch ' + f2(offOf()) : '') + ' · Giá ' + f2(res.price), pad, y); ctx.globalAlpha = 1; y += 22;
+    ctx.font = '13px Arial'; ctx.globalAlpha = 0.7; ctx.fillText(A.tm(res.now) + ' · dữ liệu ' + (SYM.id === 'XAUUSD' && !onDeriv() && RAW ? 'PAXG (dự phòng)' : SYM.src) + (offOf() ? ' · đã cộng chênh lệch ' + f2(offOf()) : '') + ' · Giá ' + f2(res.price), pad, y); ctx.globalAlpha = 1; y += 22;
     if (s) {
       const cells = [['Entry', f2(s.entry)], ['SL', f2(s.sl)], ['TP1', f2(s.tp1) + ' (1:' + s.rr1 + ')'], ['TP2', f2(s.tp2) + ' (1:' + s.rr2 + ')'], ['Rủi ro' + SYM.unit, '$' + f2(s.risk)], ['Điểm', s.score + '/100 · ' + s.grade]];
       const cw = (W - pad * 2) / cells.length; cells.forEach((c, i) => { ctx.font = '12px Arial'; ctx.globalAlpha = 0.65; ctx.fillText(c[0], pad + i * cw, y); ctx.globalAlpha = 1; ctx.font = 'bold 17px Arial'; ctx.fillStyle = i === 1 ? '#e5484d' : i === 2 || i === 3 ? '#30a46c' : fg; ctx.fillText(c[1], pad + i * cw, y + 20); ctx.fillStyle = fg; }); y += 44;
@@ -242,7 +251,7 @@
   /* ---------- ảnh cho bot Telegram (chạy trong trình duyệt ẩn, scripts/shot.js): mỗi khung của một setup thành một ảnh, vẽ giống hệt trang web ----------
      p = { sym, F: {m15,h1,h4,m5}, opt: tham số của A.analyze, id: mã setup, label?: dòng ghi chú trên đầu ảnh } → [{ key, data: dataURL PNG }] */
   A.snapshot = async function (p) {
-    SYM = A.SYMS[p.sym] || A.SYMS.XAUUSD; SNAP = null; LVR.length = 0;
+    SYM = A.SYMS[p.sym] || A.SYMS.XAUUSD; if (p.src) SYM = Object.assign({}, SYM, { src: p.src }); SNAP = null; LVR.length = 0;
     const F = p.F, res = A.analyze(F, p.opt), s = res.setups.concat(res.held || [], res.recent || []).find((x) => x.id === p.id);
     if (!s) throw new Error('không thấy setup ' + p.id);
     res.n = F.m15.length; res.m15 = F.m15;
@@ -291,7 +300,7 @@
   }
   /* một dòng gợi ý cho một lệnh của mô hình chính */
   function callOf(s, res) {
-    const c = coreT(s.model), warn = c && !c.ok ? ' <em>(' + (s.model === 'PA' ? 'Price Action' : 'ICT') + ' chưa đạt kiểm chứng trên ' + SYM.name + ')</em>' : '', tp = ' · SL ' + f2(s.sl) + ' · TP ' + f2(s.tp1) + ' / ' + f2(s.tp2) + ' · điểm ' + s.score;
+    const c = coreT(s.model), warn = c && (!c.ok || lossDv(c)) ? ' <em>(' + (s.model === 'PA' ? 'Price Action' : 'ICT') + (lossDv(c) ? ' lỗ khi đo trên giá Deriv' : ' chưa đạt kiểm chứng trên ' + SYM.name) + ')</em>' : '', tp = ' · SL ' + f2(s.sl) + ' · TP ' + f2(s.tp1) + ' / ' + f2(s.tp2) + ' · điểm ' + s.score;
     const fresh = s.model === 'PA' && s.state === 'active' && s.ready === res.n - 1;
     if (s.state === 'inzone') return '<b>' + side(s.dir) + ' quanh ' + f2(s.entry) + '</b>: giá đang trong vùng, chờ phản ứng ở khung nhỏ' + tp + warn;
     if (s.state === 'pending') return '<b>' + side(s.dir) + ' limit ' + f2(s.entry) + '</b>' + tp + warn;
@@ -330,13 +339,15 @@
   function verdictHtml(res) {
     const B = res.bias; if (!B) return '<section class="an-card"><p>' + esc(res.notes[0] || 'Chưa đủ dữ liệu.') + '</p></section>';
     let head, cls, tips = [];
+    const stale = !ASOF && Date.now() - res.now > 45 * 60000;
     if (res.closed) { head = 'THỊ TRƯỜNG NGHỈ'; cls = 'info'; tips = ['Chờ mở cửa lại (tối Chủ nhật giờ New York).']; }
+    else if (stale) { head = 'CHƯA CÓ GIÁ MỚI'; cls = 'warn'; tips = ['Nến cuối đóng lúc <b>' + hmVN(res.now) + ' ' + dmVN(res.now) + '</b> (thị trường nghỉ hoặc mất kết nối): không đặt lệnh theo dữ liệu này.']; }
     else if (res.news && res.news.block) { head = 'ĐỨNG NGOÀI'; cls = 'warn'; tips = ['Không vào lệnh tới <b>' + hmVN(res.news.until) + '</b> (' + esc(res.news.current[0].label) + ').' + (res.held.length ? ' Đang giữ lại ' + res.held.length + ' lệnh.' : '')]; }
     else if (res.setups.length) { const s = res.setups[0]; head = 'CÓ LỆNH ' + side(s.dir); cls = s.dir === 'BUY' ? 'ok' : 'no'; tips = res.setups.map((x) => callOf(x, res)); }
     else if (B.dir) { head = 'CHỜ ' + (B.dir > 0 ? 'MUA' : 'BÁN'); cls = B.dir > 0 ? 'ok' : 'no'; tips = waitFor(res); }
     else { head = 'ĐỨNG NGOÀI'; cls = 'info'; tips = waitFor(res); }
     if (!res.closed && B.t4.dir && B.t1.dir && B.t4.dir !== B.t1.dir) tips.push('<em>4H và 1H đang ngược hướng: độ tin cậy thấp, chỉ xét lệnh điểm cao.</em>');
-    if (!res.closed && !res.setups.length && !['ICT', 'PA'].some((m) => (coreT(m) || {}).ok)) tips.push('<em>ICT và Price Action lỗ trong kiểm chứng ' + SYM.name + ': điều kiện chờ ở trên chỉ để quan sát.</em>');
+    if (!res.closed && !res.setups.length && !['ICT', 'PA'].some((m) => { const c = coreT(m); return c && c.ok && !lossDv(c); })) tips.push('<em>ICT và Price Action lỗ trong kiểm chứng ' + SYM.name + ': điều kiện chờ ở trên chỉ để quan sát.</em>');
     const dir = (t) => (t.dir > 0 ? '▲ Tăng' : t.dir < 0 ? '▼ Giảm' : 'Chưa rõ'), tf = (t, bars) => [dir(t), t.dir && bars[t.i] ? t.k + ' ' + dmVN(bars[t.i].t) : '', t.dir > 0 ? 'ok' : t.dir < 0 ? 'no' : ''];
     const tiles = [['Cấu trúc 4H'].concat(tf(B.t4, OUT.F.h4)), ['Cấu trúc 1H'].concat(tf(B.t1, OUT.F.h1)), ['Vị trí trong range 4H', Math.round(B.loc * 100) + '% · ' + (B.loc < 0.5 ? 'Discount' : 'Premium'), f2(B.range.lo) + ' – ' + f2(B.range.hi)], sessionTile(), newsTile(res)];
     return '<section class="an-card an-verdict v-' + cls + '"><div class="an-v-top"><div class="an-v-head">' + head + '</div><div class="an-v-px"><b>' + f2(res.price) + '</b><span>' + SYM.name + ' · nến đóng ' + hmVN(res.now) + ' VN ' + dmVN(res.now) + '</span></div></div>' +
@@ -371,13 +382,15 @@
   const sg = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + 'R';
   /* bảng tổng hợp: mọi lệnh đang gợi ý, cả hai mô hình chính lẫn mô hình bổ sung */
   const coreT = (m) => (A.CORE_TESTS[SYM.id] || {})[m];
-  const coreMark = (m) => { const c = coreT(m); return c ? (c.ok ? ' <span class="up">✔ đã kiểm chứng</span>' : ' <span class="dn">✖ chưa đạt</span>') : ''; };
-  const coreChip = (m) => { const c = coreT(m); return c ? chip(c.ok ? '✔ Đã kiểm chứng nhiều năm' : '✖ Chưa đạt kiểm chứng', c.ok ? 'ok' : 'no') : ''; };
+  const lossDv = (c) => !!(c && c.dv && c.dv[2] <= 0); // lỗ khi đo lại trên nguồn giá đang dùng
+  const coreMark = (m) => { const c = coreT(m); return c ? (lossDv(c) ? ' <span class="dn">✖ lỗ trên Deriv</span>' : c.ok ? ' <span class="up">✔ đã kiểm chứng</span>' : ' <span class="dn">✖ chưa đạt</span>') : ''; };
+  const coreChip = (m) => { const c = coreT(m); return c ? chip(lossDv(c) ? '✖ Lỗ trên giá Deriv 12 tháng qua' : c.ok ? '✔ Đã kiểm chứng nhiều năm' : '✖ Chưa đạt kiểm chứng', c.ok && !lossDv(c) ? 'ok' : 'no') : ''; };
   /* bảng kiểm chứng nhiều năm của hai mô hình chính trên mã đang xem */
   function coreTable() {
     const t = A.CORE_TESTS[SYM.id]; if (!t) return '';
-    return '<h3>Hai mô hình chính trên ' + SYM.name + ' (cùng tiêu chí)</h3><div class="tblw"><table><tr><th>Mô hình</th><th>' + (SYM.id === 'XAUUSD' ? '09/2020–2023' : '2019–2023') + '</th><th>2024–2026</th><th>Phí gấp đôi (PF)</th><th>Kết luận</th></tr>' +
-      ['ICT', 'PA'].map((m) => { const c = t[m]; return '<tr><td><b>' + (m === 'PA' ? 'Price Action' : 'ICT') + '</b></td><td>' + evText(c.a) + '</td><td>' + evText(c.b) + '</td><td>' + (c.x2 ? c.x2[0] + ' · ' + c.x2[1] : '–') + '</td><td class="' + (c.ok ? 'up' : 'dn') + '"><b>' + (c.ok ? 'Đạt' : 'Chưa đạt') + '</b></td></tr>'; }).join('') + '</table></div>';
+    const dv = !!(t.ICT && t.ICT.dv);
+    return '<h3>Hai mô hình chính trên ' + SYM.name + ' (cùng tiêu chí)</h3><div class="tblw"><table><tr><th>Mô hình</th>' + (dv ? '<th>Deriv 12/2025–11/2026</th>' : '') + '<th>' + (SYM.id === 'XAUUSD' ? 'PAXG 09/2020–2023' : '2019–2023') + '</th><th>' + (dv ? 'PAXG ' : '') + '2024–2026</th><th>Phí gấp đôi (PF)</th><th>Kết luận</th></tr>' +
+      ['ICT', 'PA'].map((m) => { const c = t[m]; return '<tr><td><b>' + (m === 'PA' ? 'Price Action' : 'ICT') + '</b></td>' + (dv ? '<td class="' + (c.dv[2] > 0 ? 'up' : 'dn') + '">' + evText(c.dv) + '</td>' : '') + '<td>' + evText(c.a) + '</td><td>' + evText(c.b) + '</td><td>' + (c.x2 ? c.x2[0] + ' · ' + c.x2[1] : '–') + '</td><td class="' + (c.ok && !lossDv(c) ? 'up' : 'dn') + '"><b>' + (lossDv(c) ? 'Lỗ trên Deriv' : c.ok ? 'Đạt' : 'Chưa đạt') + '</b></td></tr>'; }).join('') + '</table></div>';
   }
   const goldTable = () => '<details><summary>' + A.GOLD_TESTS.length + ' hiệu ứng và hệ riêng cho vàng đã thử thêm (không cái nào đạt)</summary><div class="tblw"><table><tr><th>Mô hình</th><th>Giai đoạn 1</th><th>Giai đoạn 2</th><th>Giai đoạn 3</th></tr>' +
     A.GOLD_TESTS.map((r) => '<tr><td>' + esc(r[0]) + '</td>' + r[1].map((p) => '<td><span class="muted">' + esc(p[0]) + '</span><br><span class="' + (p[1] > 0 ? 'up' : 'dn') + '">' + (p[1] > 0 ? '+' : '') + p[1] + 'R</span></td>').join('') + '</tr>').join('') +
@@ -426,7 +439,8 @@
   /* phần tham khảo (gập): số liệu kiểm chứng, mô hình đã thử */
   function evidenceHtml(res) {
     const md = res.md; let h = coreTable();
-    if ((coreT('ICT') || {}).ok) h += '<p class="an-line muted">Lợi thế ICT mỏng: PF khoảng 1.2, từng sụt ~18R, phí gấp đôi thì gần hòa vốn.</p>';
+    if (lossDv(coreT('ICT'))) h += '<p class="an-line muted">Chưa có bằng chứng ICT có lợi thế trên giá vàng thật: hãy theo dõi hoặc đánh thử trước khi dùng tiền thật.</p>';
+    else if ((coreT('ICT') || {}).ok) h += '<p class="an-line muted">Lợi thế ICT mỏng: PF khoảng 1.2, từng sụt ~18R, phí gấp đôi thì gần hòa vốn.</p>';
     if (md && md.list.length) h += '<h3>Mô hình bổ sung đạt chuẩn</h3><div class="tblw"><table><tr><th>Mô hình</th><th>Quy tắc</th><th>2019–2023</th><th>2024–2026</th></tr>' +
       md.list.map((k) => { const m = A.MODELS[k], ev = m.ev[SYM.id]; return '<tr><td><b>' + esc(m.n) + '</b><br><span class="muted">' + esc(m.by) + '</span></td><td>' + esc(m.d) + '</td><td>' + evText(ev.a) + '</td><td>' + evText(ev.b) + '</td></tr>'; }).join('') + '</table></div>';
     return h + (SYM.id === 'XAUUSD' ? goldTable() : '') + testTable();
@@ -464,7 +478,7 @@
       '<li><b>Đứng ngoài quanh tin mạnh:</b> các tin USD mức High (lãi suất/FOMC, CPI, NFP, PCE, GDP, bán lẻ…) làm giá quét hai phía và spread nở rộng, nên công cụ không đưa lệnh từ trước tin 30–60 phút đến sau tin 30–90 phút (tin lãi suất/Fed có cửa sổ dài nhất). Áp dụng cho cả vàng và BTC.</li>' +
       '<li><b>Không phát tín hiệu</b> khi bias không rõ, ' + (SYM.closes ? 'thị trường vàng nghỉ cuối tuần, ' : '') + 'SL nhỏ hơn $' + (+A.cfg(SYM.id, RAW ? RAW.m15[RAW.m15.length - 1].c : 1).minRisk.toFixed(4)) + ' (gần bằng spread/phí), hoặc vào quá nông (đuổi giá).</li></ol>';
   }
-  const dataNote = () => (SYM.id === 'XAUUSD' ? 'Dữ liệu PAXG/USDT (Binance), quy đổi gần đúng về giá spot.' : 'Dữ liệu ' + SYM.src + ' (Binance), giao dịch 24/7.') + (SYM.bt ? ' ' + SYM.bt : '');
+  const dataNote = () => (SYM.id !== 'XAUUSD' ? 'Dữ liệu ' + SYM.src + ', giao dịch 24/7.' : onDeriv() ? 'Dữ liệu XAU/USD từ Deriv.' : 'Không truy cập được Deriv: đang dùng tạm PAXG/USDT (Binance), quy đổi gần đúng về giá spot.') + (SYM.bt ? ' ' + SYM.bt : '');
   /* một mục gập duy nhất cuối trang cho mọi nội dung tham khảo */
   const refHtml = (res) => '<section class="an-card"><details class="an-keep" data-id="ref"><summary><b>Kiểm chứng, quy tắc và dữ liệu</b></summary><p class="an-line">' + esc(dataNote()) + '</p>' + evidenceHtml(res) + '<div id="an-bt"></div>' + methodHtml() + '</details></section>' +
     '<p class="an-disc">Nội dung giáo dục, không phải lời khuyên đầu tư. Đối chiếu biểu đồ broker trước khi vào lệnh.</p>';
@@ -526,6 +540,11 @@
     const ok = LV.lastMsg && Date.now() - LV.lastMsg < 15000;
     e.className = 'an-live' + (ok ? ' on ' + (LV.dir > 0 ? 'up' : LV.dir < 0 ? 'dn' : '') : ''); e.innerHTML = '<i></i>' + (ok ? 'Trực tiếp · <b>' + f2(LV.price + LV.off) + '</b>' : 'Đang kết nối giá trực tiếp…');
   }
+  /* vàng: nến đang chạy lấy từ luồng Deriv */
+  function liveDeriv() {
+    const NAME = { m5: '5m', m15: '15m', h1: '1h', h4: '4h' }, since = Date.now();
+    LV.ds = ICT.deriv.stream(SYM.dsym, Object.keys(NAME), (k, b, x) => { if (x && b.t + TFMS[k] < since) return; onKline({ i: NAME[k], t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, x }); });
+  }
   function livePoll() {
     Promise.all(['5m', '15m', '1h', '4h'].map((iv) => getJSON('/api/v3/klines?symbol=' + SYM.bn + '&interval=' + iv + '&limit=2').then((k) => k.forEach((x, j) => onKline({ i: iv, t: x[0], o: x[1], h: x[2], l: x[3], c: x[4], x: j < k.length - 1 }))))).catch(() => { /* thử lại ở lần sau */ });
   }
@@ -537,8 +556,8 @@
     LV.ws = ws; ws.onmessage = (m) => { try { const d = JSON.parse(m.data).data; if (d && d.k) onKline(d.k); } catch (e) { /* bỏ qua gói lỗi */ } };
     ws.onopen = () => { LV.retry = 0; if (LV.poll) { clearInterval(LV.poll); LV.poll = null; } }; ws.onclose = lost; ws.onerror = lost;
   }
-  function liveStart() { if (LV.on) return; LV.on = true; liveConnect(); LV.watch = setInterval(liveUi, 1000); document.addEventListener('visibilitychange', LV.vis = () => { if (!document.hidden) { Object.keys(LV.last).forEach((k) => applyRec(k, LV.last[k])); if (LV.stale && cfgGet().auto !== false && !ASOF && VIEW && !running) run(VIEW, true, undefined, true); } }); }
-  function liveStop() { if (!LV.on) return; LV.on = false; const w = LV.ws; LV.ws = null; try { if (w) w.close(); } catch (e) { /* bỏ qua */ } clearInterval(LV.watch); clearInterval(LV.poll); LV.poll = null; document.removeEventListener('visibilitychange', LV.vis); LV.price = null; liveUi(); }
+  function liveStart() { if (LV.on) return; LV.on = true; if (onDeriv()) liveDeriv(); else liveConnect(); LV.watch = setInterval(liveUi, 1000); document.addEventListener('visibilitychange', LV.vis = () => { if (!document.hidden) { Object.keys(LV.last).forEach((k) => applyRec(k, LV.last[k])); if (LV.stale && cfgGet().auto !== false && !ASOF && VIEW && !running) run(VIEW, true, undefined, true); } }); }
+  function liveStop() { if (!LV.on) return; LV.on = false; if (LV.ds) { LV.ds.close(); LV.ds = null; } const w = LV.ws; LV.ws = null; try { if (w) w.close(); } catch (e) { /* bỏ qua */ } clearInterval(LV.watch); clearInterval(LV.poll); LV.poll = null; document.removeEventListener('visibilitychange', LV.vis); LV.price = null; liveUi(); }
 
   /* ---------- chạy phân tích ---------- */
   async function run(view, force, asOf, keep) {
@@ -546,9 +565,17 @@
     if (running) return; running = true; let stage = 'load'; LV.stale = false; const out = $('#an-out', view), btn = $('#an-run', view); btn.disabled = true;
     try {
       const cfg = cfgGet(); setStatus('Đang tải nến 15m, 1H, 4H…', ''); if (!keep) out.innerHTML = '<div class="an-wait">Đang tải dữ liệu và phân tích…</div>';
-      if (force || !RAW || RAW.sym !== SYM.id || Date.now() - RAW.at > 20000) { let raw = null; if (RAW && RAW.sym === SYM.id) { try { raw = await refreshRaw(RAW); } catch (e) { raw = null; } } if (!raw) raw = await loadAll(1000); if (raw.sym !== SYM.id) return; RAW = raw; }
+      if (force || !RAW || RAW.sym !== SYM.id || Date.now() - RAW.at > 20000) {
+        let raw = null; const backup = SYM.feed === 'deriv' && !!RAW && RAW.feed !== 'deriv'; // đang dùng giá dự phòng: tải lại đầy đủ để thử Deriv lần nữa
+        if (RAW && RAW.sym === SYM.id && !backup) { try { raw = await refreshRaw(RAW); } catch (e) { raw = null; } }
+        if (!raw) raw = await loadAll(1000);
+        if (raw.sym !== SYM.id) return;
+        if (RAW && RAW.sym === raw.sym && RAW.feed !== raw.feed) { liveStop(); LV.last = {}; BIG = null; } // đổi nguồn giá: nối lại luồng trực tiếp
+        RAW = raw;
+      }
       stage = 'an';
-      if (SYM.id === 'XAUUSD' && cfg.autoOff !== false && !ASOF && Date.now() - SPOT.t > 240000) { try { const o = await spotOff(); cfgSet({ off: o }); const ie = $('#an-off', view); if (ie) ie.value = o; } catch (e) { /* giữ mức chênh lệch cũ */ } }
+      const ob = $('#an-offbox', view); if (ob) ob.style.display = SYM.id === 'XAUUSD' && !onDeriv() ? '' : 'none';
+      if (SYM.id === 'XAUUSD' && !onDeriv() && cfg.autoOff !== false && !ASOF && Date.now() - SPOT.t > 240000) { try { const o = await spotOff(); cfgSet({ off: o }); const ie = $('#an-off', view); if (ie) ie.value = o; } catch (e) { /* giữ mức chênh lệch cũ */ } }
       const off = offOf(), T = ASOF;
       if (!T && Date.now() - CAL.at > 1200000) await loadCal();
       const cut = (a, ms) => (T ? a.filter((x) => x.t + ms <= T) : a);
@@ -570,7 +597,7 @@
       setStatus('Cập nhật xong lúc ' + new Date().toLocaleTimeString('vi-VN'), 'ok');
     } catch (e) {
       console.error(e);
-      out.innerHTML = stage === 'load' ? '<div class="callout warn"><p><b>Không tải được dữ liệu.</b> ' + esc(e.message || String(e)) + '. Kiểm tra kết nối mạng hoặc thử lại sau ít phút. Nguồn dữ liệu là API công khai của Binance (cặp ' + SYM.src + ').</p><div class="an-btns"><button type="button" class="btn pri" id="an-retry">⟳ Thử lại</button></div></div>'
+      out.innerHTML = stage === 'load' ? '<div class="callout warn"><p><b>Không tải được dữ liệu.</b> ' + esc(e.message || String(e)) + '. Kiểm tra kết nối mạng hoặc thử lại sau ít phút. Nguồn giá: ' + SYM.src + '.</p><div class="an-btns"><button type="button" class="btn pri" id="an-retry">⟳ Thử lại</button></div></div>'
         : '<div class="callout warn"><p><b>Có lỗi khi phân tích hoặc vẽ biểu đồ.</b> ' + esc(e.message || String(e)) + '. Dữ liệu đã tải được, bấm Thử lại; nếu lỗi lặp lại, hãy báo kèm nội dung này.</p><div class="an-btns"><button type="button" class="btn pri" id="an-retry">⟳ Thử lại</button></div></div>';
       const rt = $('#an-retry', out); if (rt) rt.onclick = () => run(view, true); setStatus(stage === 'load' ? 'Lỗi tải dữ liệu' : 'Lỗi khi phân tích', 'no');
     } finally { running = false; btn.disabled = false; }
@@ -612,7 +639,7 @@
       '<span id="an-offbox"><label>Chênh lệch giá <input id="an-off" type="number" step="0.1" value="' + (+cfg.off || 0) + '" style="width:90px"></label><button type="button" class="btn sm" id="an-spot" title="So giá PAXG với giá vàng spot (gold-api.com) rồi điền chênh lệch">Lấy theo giá spot</button><label class="an-auto" title="Tự lấy chênh lệch theo giá spot khi mở trang và mỗi lần phân tích (tối đa 4 phút một lần). Tắt nếu bạn muốn tự nhập."><input type="checkbox" id="an-autooff"> Tự động</label></span></div></details></div>' +
       '<div id="an-out"></div></div>';
     const symUi = () => {
-      $('#an-sym', view).value = SYM.id; $('#an-mode', view).value = modeOf(); $('#an-h1', view).textContent = SYM.name; $('#an-offbox', view).style.display = SYM.id === 'XAUUSD' ? '' : 'none';
+      $('#an-sym', view).value = SYM.id; $('#an-mode', view).value = modeOf(); $('#an-h1', view).textContent = SYM.name; $('#an-offbox', view).style.display = 'none'; // chỉ hiện khi vàng phải dùng giá dự phòng
     };
     symUi(); VIEW = view; $('#an-auto', view).checked = cfg.auto !== false; $('#an-auto', view).onchange = (e) => cfgSet({ auto: e.target.checked });
     ['pointerdown', 'wheel', 'keydown', 'touchstart'].forEach((ev) => view.addEventListener(ev, () => (UI.t = Date.now()), { capture: true, passive: true }));

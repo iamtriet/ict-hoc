@@ -8,8 +8,8 @@
   /* cấu hình theo mã: bn = cặp Binance, kr = cặp Kraken (dự phòng), tv = mã TradingView, dec = số lẻ hiển thị.
      minRisk / buf / cost: số tuyệt đối (vàng) hoặc tỷ lệ theo giá (mrp, bp, cp) cho crypto. closes = có nghỉ cuối tuần. */
   const SYMS = {
-    XAUUSD: { id: 'XAUUSD', name: 'XAUUSD', label: 'Vàng', bn: 'PAXGUSDT', kr: 'PAXGUSD', tv: 'OANDA:XAUUSD', src: 'PAXG/USDT', dec: 2, minRisk: 2.0, buf: 0.25, cost: 0.4, unit: '/oz', closes: true, mode: 'both', bt: 'Kiểm chứng 09/2020 – 11/2026 sau phí: ICT +76R trên 656 lệnh khớp (profit factor 1.16 giai đoạn 2020–23, 1.22 giai đoạn 2024–26); Price Action −9R trên 224 lệnh (lỗ 2020–23, lãi 2024–26). Phần lớn lãi đến từ năm 2025, sụt giảm sâu nhất khoảng 28R.' },
-    BTCUSD: { id: 'BTCUSD', name: 'BTCUSD', label: 'Bitcoin', bn: 'BTCUSDT', kr: 'XBTUSD', tv: 'BINANCE:BTCUSDT', src: 'BTC/USDT', dec: 1, mrp: 0.0006, bp: 0.00005, cp: 0.0005, unit: '', closes: false, mode: 'both', bt: 'Kiểm chứng 01/2019 – 11/2026 sau phí: hai quy tắc này LỖ NẶNG với BTC (ICT −266R trên 1451 lệnh, Price Action −168R trên 574 lệnh, năm nào cũng lỗ; trước phí chỉ quanh hòa vốn). Đừng vào tiền theo tín hiệu ICT/PA của BTC; xem mục Mô hình bổ sung.' },
+    XAUUSD: { id: 'XAUUSD', name: 'XAUUSD', label: 'Vàng', feed: 'deriv', dsym: 'frxXAUUSD', bn: 'PAXGUSDT', kr: 'PAXGUSD', tv: 'OANDA:XAUUSD', src: 'Deriv XAU/USD', dec: 2, minRisk: 2.0, buf: 0.25, cost: 0.4, unit: '/oz', closes: true, mode: 'both', bt: 'Trên giá Deriv 12/2025 – 11/2026, sau phí, cả hai quy tắc đều LỖ: ICT −19R (113 lệnh, thắng 27%), Price Action −9R (36 lệnh). Số cũ 09/2020 – 11/2026 (ICT +76R, Price Action −9R) đo trên PAXG, token vàng chạy cả cuối tuần: cùng 11 tháng đó PAXG cho ICT +13R nhưng đổi dấu khi giá chỉ lệch vài chục cent, nên đừng coi là lợi thế đã chứng minh.' },
+    BTCUSD: { id: 'BTCUSD', name: 'BTCUSD', label: 'Bitcoin', bn: 'BTCUSDT', kr: 'XBTUSD', tv: 'BINANCE:BTCUSDT', src: 'BTC/USDT (Binance)', dec: 1, mrp: 0.0006, bp: 0.00005, cp: 0.0005, unit: '', closes: false, mode: 'both', bt: 'Kiểm chứng 01/2019 – 11/2026 sau phí: hai quy tắc này LỖ NẶNG với BTC (ICT −266R trên 1451 lệnh, Price Action −168R trên 574 lệnh, năm nào cũng lỗ; trước phí chỉ quanh hòa vốn). Đừng vào tiền theo tín hiệu ICT/PA của BTC; xem mục Mô hình bổ sung.' },
   };
   const resolveCfg = (id, price) => { const b = SYMS[id] || SYMS.XAUUSD, c = Object.assign({}, b); if (c.minRisk == null) { c.minRisk = price * b.mrp; c.buf = price * b.bp; c.cost = price * b.cp; } return c; };
   let CFG = resolveCfg('XAUUSD', 3500);
@@ -296,7 +296,7 @@
     if (opt.news !== false) { const tn = opt.at != null ? opt.at : res.now; res.news = A.newsState(opt.events && opt.events.length ? opt.events : A.fallbackEvents(tn), tn); }
     if (n < 120 || h1.length < 60 || h4.length < 40) { res.notes.push('Chưa đủ dữ liệu nến để phân tích.'); return res; }
     const B = biasOf(h4, h1, price); res.bias = B; res.closed = closedAt(res.now);
-    if (res.closed) { res.notes.push('Thị trường vàng đang nghỉ cuối tuần (PAXG vẫn có giá nhưng thanh khoản mỏng): không phát tín hiệu.'); return res; }
+    if (res.closed) { res.notes.push('Thị trường vàng đang nghỉ cuối tuần: không phát tín hiệu.'); return res; }
     const kl = keyLevels(m15, n); res.levels = kl;
     const dirs = B.dir ? [B.dir] : [];
     if (!dirs.length) { res.notes.push('Bias HTF chưa đồng thuận nên không tìm setup.'); return res; }

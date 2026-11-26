@@ -7,7 +7,7 @@ on:
   push:
     # đổi mã của bot thì chạy lại ngay bằng mã mới (lượt đang chạy bị thay thế)
     branches: [main]
-    paths: ['.github/workflows/alerts.yml', 'scripts/notify.js', 'scripts/watch.js', 'scripts/chart.js', 'scripts/shot.js', 'scripts/render.html', 'scripts/test-request.txt', 'scripts/message.js', 'assets/analyst-models.js', 'assets/engine.js', 'assets/analyst-core.js', 'assets/analyst.js', 'assets/style.css']
+    paths: ['.github/workflows/alerts.yml', 'scripts/notify.js', 'scripts/watch.js', 'scripts/chart.js', 'scripts/shot.js', 'scripts/render.html', 'scripts/test-request.txt', 'scripts/message.js', 'assets/analyst-models.js', 'assets/engine.js', 'assets/deriv.js', 'assets/analyst-core.js', 'assets/analyst.js', 'assets/style.css']
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
@@ -69,6 +69,7 @@ jobs:
           SYMBOLS: ${{ vars.SYMBOLS }}
           PRICE_OFFSET: ${{ vars.PRICE_OFFSET }}
           SHOT: ${{ vars.SHOT }}
+          GOLD_FEED: ${{ vars.GOLD_FEED }}
         run: node scripts/watch.js
 
       - name: Lưu danh sách đã thông báo

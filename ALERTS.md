@@ -1,6 +1,6 @@
 # Thông báo Telegram khi có setup XAUUSD
 
-GitHub Actions quét thị trường 24/7: ngay khi nến 15m đóng (nghe WebSocket Binance, trễ vài giây) và dự phòng 5 phút một lần (một lượt chạy giữ máy ~5h40 rồi tự gọi lượt kế tiếp; cron mỗi giờ chỉ là lưới an toàn vì cron của GitHub hay trễ hoặc bỏ lượt), dùng đúng lõi phân tích của trang web
+GitHub Actions quét thị trường 24/7: ngay khi nến 15m đóng (nghe giá trực tiếp: vàng từ Deriv, BTC từ Binance; trễ vài giây) và dự phòng 5 phút một lần (một lượt chạy giữ máy ~5h40 rồi tự gọi lượt kế tiếp; cron mỗi giờ chỉ là lưới an toàn vì cron của GitHub hay trễ hoặc bỏ lượt), dùng đúng lõi phân tích của trang web
 (`assets/analyst-core.js`). Chỉ khi có setup đạt điều kiện và điểm ≥ 55, bot gửi cho bạn một **album 4 ảnh** (4H, 1H, 15m, 5m)
 vẽ giống trang Phân tích (điểm quét, MSS/BOS, FVG, Order Block, hộp Entry/SL/TP), kèm chú thích ngắn: lệnh cần đặt, SL/TP, bối cảnh 4H/1H, điều kiện đạt và chưa đạt, khi nào hủy. Mỗi setup chỉ được gửi một lần. Không có setup thì bot im lặng.
 
@@ -48,7 +48,8 @@ Công cụ (web và bot) không đưa lệnh quanh các tin USD mức High: lãi
 | `MIN_SCORE` | Điểm tối thiểu để gửi (0–100). Tăng lên 70 để chỉ nhận setup mạnh | 55 |
 | `SYMBOLS` | Các mã được quét và gửi Telegram, ngăn cách bằng dấu phẩy (`XAUUSD`, `BTCUSD`). Muốn chỉ nhận vàng: `XAUUSD` | XAUUSD,BTCUSD |
 | `MODE` | `both`, `ict` hoặc `pa` | both |
-| `PRICE_OFFSET` | `spot` (tự quy đổi theo giá vàng spot), `none`, hoặc một số cộng vào giá (ví dụ `2.5`) | spot |
+| `GOLD_FEED` | Đặt `paxg` để bỏ Deriv và dùng lại PAXG cho vàng | Deriv |
+| `PRICE_OFFSET` | Chỉ dùng khi vàng lấy từ PAXG: `spot` (tự quy đổi theo giá vàng spot), `none`, hoặc một số cộng vào giá (ví dụ `2.5`) | spot |
 | `HB_HOUR` | Giờ UTC gửi tin báo sống hằng ngày (0 = 07:00 giờ Việt Nam) | 0 |
 | `SESSIONS` | Các phiên được báo giờ bắt đầu, ngăn cách bằng dấu phẩy: `asia`, `london`, `ny`, `lc` (London Close), `pm` (NY PM). `off` để tắt | asia,london,ny |
 | `SITE_URL` | Liên kết đặt trong tin nhắn | trang phân tích của bạn |
@@ -59,7 +60,7 @@ Khi một phiên (killzone) bắt đầu, bot gửi một tin ngắn: tên phiê
 
 ## Bitcoin (BTCUSD)
 
-Trang Phân tích có ô chọn mã XAUUSD / BTCUSD (dữ liệu Binance, BTC giao dịch 24/7), và Telegram gửi cả hai mã theo mặc định (tin BTC có ghi tên mã). Lưu ý: kiểm chứng 01/2019 – 11/2026 cho thấy hai quy tắc ICT và Price Action **lỗ nặng với BTC** sau phí (ICT −266R, Price Action −168R), trong khi vàng ICT +76R, Price Action −9R (09/2020 – 11/2026). Tín hiệu BTC gửi qua Telegram chỉ nên dùng để học. Muốn tắt tin BTC: đặt biến `SYMBOLS` = `XAUUSD`. Các “mô hình bổ sung” trên trang web không gửi Telegram.
+Trang Phân tích có ô chọn mã XAUUSD / BTCUSD (BTC lấy từ Binance, giao dịch 24/7), và Telegram gửi cả hai mã theo mặc định (tin BTC có ghi tên mã). Lưu ý: kiểm chứng 01/2019 – 11/2026 cho thấy hai quy tắc ICT và Price Action **lỗ nặng với BTC** sau phí (ICT −266R, Price Action −168R), còn với vàng xem mục “Giới hạn cần biết”. Tín hiệu BTC gửi qua Telegram chỉ nên dùng để học. Muốn tắt tin BTC: đặt biến `SYMBOLS` = `XAUUSD`. Các “mô hình bổ sung” trên trang web không gửi Telegram.
 
 ## Kiểm tra tự động
 
@@ -69,6 +70,7 @@ Mỗi lần có commit, GitHub chạy `node scripts/check.js` (workflow *Check*)
 
 - **Khởi động lần đầu:** vào *Actions → XAUUSD alerts → Run workflow* một lần để bắt đầu chuỗi. Sau đó nó tự nối tiếp; nếu chuỗi bị đứt, cron mỗi giờ sẽ nối lại. Tab Actions sẽ thấy một lượt chạy kéo dài ~5h40, bên trong có nhiều nhóm "Lượt n".
 - Tin nhắn thường đến sau khi nến 15m đóng khoảng 5–15 giây (nếu WebSocket đứt thì tối đa ~5 phút, theo lượt quét dự phòng). Setup chờ lệnh limit thường còn hiệu lực nhiều giờ nên ít ảnh hưởng, còn tín hiệu Price Action (vào khi nến xác nhận đóng) có thể đến muộn một nhịp: nếu giá đã chạy quá 0.5R, đừng đuổi.
-- Dữ liệu là PAXG (token vàng) từ Binance, nếu không truy cập được sẽ chuyển sang Kraken. Giá được quy đổi gần đúng về spot, nên luôn đối chiếu với biểu đồ broker.
+- Giá vàng là XAU/USD từ Deriv (API công khai, không cần tài khoản). Không truy cập được Deriv thì bot tạm dùng PAXG (token vàng, Binance → Kraken) quy đổi gần đúng về spot, báo một tin ⚠️ và báo lại ✅ khi Deriv trở lại. BTC lấy từ Binance. Giá mỗi broker lệch nhau, luôn đối chiếu biểu đồ broker.
+- **Độ chuẩn trên vàng:** đo lại trên giá Deriv 12/2025 – 11/2026 (sau phí 0.02%), ICT lỗ −19R trên 113 lệnh (thắng 27%), Price Action lỗ −9R trên 36 lệnh. Số lãi nhiều năm trước đây đo trên PAXG không lặp lại được trên giá vàng thật.
 - Lịch quét 24 giờ cần repo ở chế độ **public** (Actions không giới hạn phút); với repo riêng tư sẽ vượt 2.000 phút miễn phí mỗi tháng. Repo public cũng bị GitHub tự tắt lịch sau 60 ngày không có commit nào: khi đó vào tab Actions bấm bật lại. Muốn tắt: *Actions → XAUUSD alerts → ⋯ → Disable workflow*.
 - Nội dung chỉ mang tính giáo dục, không phải lời khuyên đầu tư.

@@ -148,6 +148,8 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
     if (!n) throw new Error('không ghi được tín hiệu nào');
     ok('Trang trực tiếp: sổ tín hiệu đúng (' + n + ' tín hiệu từ dữ liệu mẫu, ' + opened + ' còn mở)');
   } catch (e) { fail('trang trực tiếp: ' + e.message); }
+  // nguồn giá Deriv: ghép trang lịch sử, tách nến đang chạy, chốt nến khi sang kỳ mới (máy chủ giả, không cần mạng)
+  try { await require('./deriv-test.js')(ROOT); ok('Nguồn giá Deriv: ghép trang, tách nến đang chạy và chốt nến đúng'); } catch (e) { fail('nguồn giá Deriv: ' + e.message); }
   // lịch tin: cửa sổ đứng ngoài đúng theo từng loại tin
   const fb = A.fallbackEvents(Date.UTC(2026, 10, 25)), has = (t, ti) => fb.some((e) => e.t === t && e.title === ti);
   if (!has(Date.UTC(2026, 11, 4, 13, 30), 'Non-Farm Employment Change') || !has(Date.UTC(2026, 11, 9, 19, 0), 'Federal Funds Rate')) fail('lịch dựng sẵn sai ngày NFP/FOMC');

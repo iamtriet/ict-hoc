@@ -1,5 +1,5 @@
 /* ICT Live — trang phân tích và gợi ý lệnh độ trễ thấp.
-   Giá: từng khớp lệnh qua WebSocket. Phân tích: chạy ngay khi nến 15m đóng, dùng chính dữ liệu WebSocket (không tải lại).
+   Giá: vàng từ Deriv (cập nhật khoảng mỗi giây, dự phòng PAXG trên Binance), BTC từng khớp lệnh từ Binance. Phân tích: chạy ngay khi nến 15m đóng, dùng chính dữ liệu WebSocket (không tải lại).
    "Đang hình thành": chạy thử lõi với cây nến chưa đóng để thấy trước, chưa phải tín hiệu. Lõi và quy tắc giữ nguyên (assets/analyst-core.js). */
 (function () {
   'use strict';
@@ -30,12 +30,16 @@
   const bar = (k) => ({ t: k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4] });
   function push(a, x) { const e = a[a.length - 1]; if (!e || x.t > e.t) a.push(x); else if (x.t === e.t) a[a.length - 1] = x; else { const i = a.findIndex((q) => q.t === x.t); if (i >= 0) a[i] = x; } if (a.length > 1200) a.splice(0, a.length - 1100); }
   async function fetchTf(S, key, limit) {
+    if (S.cfg.feed === 'deriv') { const r = await ICT.deriv.fetch(S.cfg.dsym, { [key]: limit }); return { closed: r[key], open: r.open[key] }; }
     const k = (await getJSON('/api/v3/klines?symbol=' + S.cfg.bn + '&interval=' + TF[key][0] + '&limit=' + limit)).map(bar), t = now();
     const closed = k.filter((x) => x.t + TF[key][1] <= t), open = k[k.length - 1];
     return { closed, open: open && open.t + TF[key][1] > t ? open : null };
   }
   async function load(S) {
-    const [a, b, c] = await Promise.all(Object.keys(TF).map((k) => fetchTf(S, k, TF[k][2])));
+    let parts;
+    if (S.cfg.feed === 'deriv') { const r = await ICT.deriv.fetch(S.cfg.dsym, { m15: 999, h1: 999, h4: 499 }); if (r.m15.length < 400) throw new Error('ít nến'); parts = Object.keys(TF).map((k) => ({ closed: r[k], open: r.open[k] })); }
+    else parts = await Promise.all(Object.keys(TF).map((k) => fetchTf(S, k, TF[k][2])));
+    const [a, b, c] = parts;
     S.data = { m15: a.closed, h1: b.closed, h4: c.closed }; S.form = a.open; if (a.open) S.price = a.open.c; else if (a.closed.length) S.price = a.closed[a.closed.length - 1].c;
   }
   const lastClose = (S) => { const a = S.data.m15; return a.length ? a[a.length - 1].t + M15 : 0; };
@@ -92,17 +96,27 @@
 
   /* ---------- kết nối trực tiếp ---------- */
   const WS = { sock: null, n: 0, last: 0, lag: null };
+  /* vàng: một luồng riêng từ Deriv */
+  let DS = null;
+  function connectDeriv() {
+    const S = IDS.map((id) => SY[id]).find((x) => x.cfg.feed === 'deriv'); if (!S) return;
+    DS = ICT.deriv.stream(S.cfg.dsym, Object.keys(TF), (k, x, done) => {
+      if (!S.data) return;
+      if (done) { push(S.data[k], x); if (k === 'm15') { if (S.form && S.form.t <= x.t) S.form = null; closed15(S, x.t + M15); } else tryRun(S, false); }
+      else if (k === 'm15' && (!S.form || x.t >= S.form.t)) { S.form = x; S.price = x.c; S.tick = true; }
+    }, (up) => { if (up) resync(S); });
+  }
   function connect() {
-    const streams = []; IDS.forEach((id) => { const b = SY[id].cfg.bn.toLowerCase(); streams.push(b + '@aggTrade', b + '@kline_15m', b + '@kline_1h', b + '@kline_4h'); });
+    const streams = []; IDS.filter((id) => SY[id].cfg.feed !== 'deriv').forEach((id) => { const b = SY[id].cfg.bn.toLowerCase(); streams.push(b + '@aggTrade', b + '@kline_15m', b + '@kline_1h', b + '@kline_4h'); });
     let s; try { s = new WebSocket(WSS[WS.n % 2] + '/stream?streams=' + streams.join('/')); } catch (e) { WS.n++; setTimeout(connect, 2000); return; }
     WS.sock = s; WS.last = Date.now();
-    s.onopen = () => { WS.last = Date.now(); IDS.forEach((id) => resync(SY[id])); };
+    s.onopen = () => { WS.last = Date.now(); IDS.filter((id) => SY[id].cfg.feed !== 'deriv').forEach((id) => resync(SY[id])); };
     s.onmessage = (m) => { if (WS.sock !== s) return; WS.last = Date.now(); try { onData(JSON.parse(m.data).data); } catch (e) { console.error(e); } };
     s.onclose = s.onerror = () => { if (WS.sock !== s) return; WS.sock = null; WS.n++; setTimeout(connect, Math.min(8000, 500 * WS.n)); };
   }
   function drop() { const s = WS.sock; WS.sock = null; WS.n++; try { if (s) s.close(); } catch (e) { /* bỏ qua */ } connect(); }
   function onData(d) {
-    if (!d || !d.s) return; const S = IDS.map((id) => SY[id]).find((x) => x.cfg.bn === d.s); if (!S || !S.data) return;
+    if (!d || !d.s) return; const S = IDS.map((id) => SY[id]).find((x) => x.cfg.feed !== 'deriv' && x.cfg.bn === d.s); if (!S || !S.data) return;
     if (d.E) { const lag = now() - d.E; if (lag > -2000 && lag < 60000) WS.lag = WS.lag == null ? lag : WS.lag * 0.9 + lag * 0.1; }
     if (d.e === 'aggTrade') {
       const p = +d.p, t = d.T; S.price = p;
@@ -120,7 +134,7 @@
   /* ---------- nguồn phụ: giờ máy chủ, lịch tin, chênh lệch giá vàng ---------- */
   async function syncClock() { try { const a = Date.now(), j = await getJSON('/api/v3/time'), b = Date.now(); clock = j.serverTime - (a + b) / 2; } catch (e) { /* dùng giờ máy */ } }
   async function loadCal() { try { const j = await (await fetch(CALURL + '?t=' + Math.floor(Date.now() / 300000), { cache: 'no-store', signal: AbortSignal.timeout(8000) })).json(); if (Array.isArray(j.events)) { events = A.mergeEvents(j.events, j.until || 0, Date.now()); calOk = true; } } catch (e) { /* dùng lịch dựng sẵn */ } }
-  async function spot() { const S = SY.XAUUSD; try { const j = await (await fetch('https://api.gold-api.com/price/XAU', { cache: 'no-store', signal: AbortSignal.timeout(6000) })).json(); const off = Math.round((+j.price - S.price) * 100) / 100; if (S.price && Math.abs(off) <= 25) { S.off = off; S.dirty = true; render(true); } } catch (e) { /* giữ mức cũ */ } }
+  async function spot() { const S = SY.XAUUSD; if (!S.backup) return; try { const j = await (await fetch('https://api.gold-api.com/price/XAU', { cache: 'no-store', signal: AbortSignal.timeout(6000) })).json(); const off = Math.round((+j.price - S.price) * 100) / 100; if (S.price && Math.abs(off) <= 25) { S.off = off; S.dirty = true; render(true); } } catch (e) { /* giữ mức cũ */ } }
 
   /* ---------- báo chuông ---------- */
   let audio = null, flash = null;
@@ -136,7 +150,7 @@
   /* ---------- hiển thị ---------- */
   const barsOf = (S) => { const a = S.data.m15.slice(-200), e = a[a.length - 1]; if (S.form && (!e || S.form.t > e.t)) a.push(S.form); return a; };
   const rows = (S) => { const bars = barsOf(S), cut = now() - 24 * 3600000; return [...S.book.values()].map((rec) => ({ rec, st: SG.status(rec, bars) })).filter((q) => SG.OPEN[q.st.state] || q.rec.t >= cut).sort((a, b) => b.rec.t - a.rec.t); };
-  const mark = (S, m) => { const t = (A.CORE_TESTS[S.id] || {})[m]; return t ? (t.ok ? '<span class="up">✔ đã kiểm chứng</span>' : '<span class="dn">✖ chưa đạt</span>') : ''; };
+  const mark = (S, m) => { const t = (A.CORE_TESTS[S.id] || {})[m]; return t ? (t.dv && t.dv[2] <= 0 ? '<span class="dn">✖ lỗ trên Deriv</span>' : t.ok ? '<span class="up">✔ đã kiểm chứng</span>' : '<span class="dn">✖ chưa đạt</span>') : ''; };
   const STXT = { pending: 'Chờ khớp', active: 'Đang chạy', tp1: 'Đang chạy · đã qua TP1, SL về hòa vốn', tp2: 'Chạm TP2 ✔', sl: 'Chạm SL ✖', tp1be: 'TP1 rồi hòa vốn', missed: 'Lỡ: chạm TP1 trước khi khớp', expired: 'Hết hạn, chưa khớp' };
   const rr = (v) => (v == null ? '' : (v >= 0 ? '+' : '') + v.toFixed(2) + 'R');
   function card(S, q, kind) {
@@ -159,8 +173,10 @@
   }
   function verdict(S, list) {
     A.cfg(S.id, S.price || 1);
+    const old = S.data && S.data.m15.length ? now() - lastClose(S) : 0;
     const t = now(), open = list.filter((q) => SG.OPEN[q.st.state]), news = A.newsState(events, t), B = S.res && S.res.bias; let head, cls, tip;
     if (A.closedAt(t)) { head = 'THỊ TRƯỜNG NGHỈ'; cls = 'info'; tip = 'Vàng mở lại tối Chủ nhật giờ New York.'; }
+    else if (old > 45 * 60000) { head = 'CHƯA CÓ GIÁ MỚI'; cls = 'warn'; tip = 'Nến cuối đóng lúc ' + vn(lastClose(S)) + ' (thị trường nghỉ hoặc mất kết nối): không đặt lệnh.'; }
     else if (news.block) { const e = news.current[0]; head = 'ĐỨNG NGOÀI · TIN MẠNH'; cls = 'warn'; tip = esc(e.label) + ' lúc ' + vn(e.t) + ', đứng ngoài tới ' + vn(news.until) + '.'; }
     else if (open.length) {
       const q = open[0], x = q.rec, run = SG.OPEN[q.st.state] === 'run'; cls = x.dir === 'BUY' ? 'ok' : 'no';
@@ -169,10 +185,11 @@
     } else if (S.prov.length) { const x = S.prov[0]; head = 'ĐANG HÌNH THÀNH: ' + side(x.dir); cls = 'warn'; tip = 'Chưa phải tín hiệu. Chuẩn bị sẵn, chờ nến đóng.'; }
     else if (B && B.dir) { head = 'CHỜ ' + (B.dir > 0 ? 'MUA' : 'BÁN'); cls = B.dir > 0 ? 'ok' : 'no'; tip = waiting(S); }
     else { head = 'ĐỨNG NGOÀI'; cls = 'info'; tip = waiting(S); }
-    const bad = !['ICT', 'PA'].some((m) => ((A.CORE_TESTS[S.id] || {})[m] || {}).ok);
+    const bad = !['ICT', 'PA'].some((m) => { const t = (A.CORE_TESTS[S.id] || {})[m]; return t && t.ok && !(t.dv && t.dv[2] <= 0); });
     const ctx = B ? '4H ' + (B.t4.dir > 0 ? '▲' : B.t4.dir < 0 ? '▼' : '–') + ' · 1H ' + (B.t1.dir > 0 ? '▲' : B.t1.dir < 0 ? '▼' : '–') + ' · giá ' + Math.round(B.loc * 100) + '% range' + (B.t4.dir && B.t1.dir && B.t4.dir !== B.t1.dir ? ' · <span class="wn">ngược hướng, độ tin cậy thấp</span>' : '') : '';
     const next = news.next[0], nx = next && next.mins <= 720 ? ' · 🗓 ' + esc(next.label) + ' ' + vn(next.t) : '';
-    return '<section class="lv-v v-' + cls + '"><div class="lv-vh">' + head + '</div><p>' + tip + '</p><p class="lv-sub">' + ctx + nx + (calOk ? '' : ' · lịch tin dựng sẵn') + '</p>' + (bad ? '<p class="lv-sub wn">ICT và Price Action lỗ trong kiểm chứng ' + S.id + ': chỉ để quan sát.</p>' : '') + '</section>';
+    const src = S.backup ? '<p class="lv-sub wn">Không truy cập được Deriv: đang dùng giá dự phòng PAXG. Tải lại trang để thử lại.</p>' : '';
+    return '<section class="lv-v v-' + cls + '"><div class="lv-vh">' + head + '</div>' + src + '<p>' + tip + '</p><p class="lv-sub">' + ctx + nx + (calOk ? '' : ' · lịch tin dựng sẵn') + '</p>' + (bad ? '<p class="lv-sub wn">ICT và Price Action lỗ trong kiểm chứng ' + S.id + ': chỉ để quan sát.</p>' : '') + '</section>';
   }
   const cache = {};
   function set(id, html) { if (cache[id] === html) return false; cache[id] = html; $('#' + id).innerHTML = html; return true; }
@@ -212,9 +229,9 @@
   function tick() {
     const t = now(), left = M15 - (t % M15), cd = p2(Math.floor(left / 60000)) + ':' + p2(Math.floor((left % 60000) / 1000));
     $('#lv-cd').textContent = cd; $('#lv-bar').style.width = (100 - (left / M15) * 100) + '%'; [].forEach.call(document.querySelectorAll('[data-cd]'), (e) => (e.textContent = cd));
-    const alive = WS.sock && WS.sock.readyState === 1 && Date.now() - WS.last < 5000, S = SY[cur], c = $('#lv-conn');
+    const S = SY[cur], alive = S.cfg.feed === 'deriv' ? !!DS && DS.alive : WS.sock && WS.sock.readyState === 1 && Date.now() - WS.last < 5000, c = $('#lv-conn');
     c.className = alive ? 'on' : 'off';
-    c.textContent = alive ? 'Trực tiếp' + (WS.lag != null ? ' · giá trễ ~' + ms(Math.max(0, WS.lag)) : '') : 'Đang kết nối lại…';
+    c.textContent = !alive ? 'Đang kết nối lại…' : S.cfg.feed === 'deriv' ? 'Trực tiếp · Deriv' : 'Trực tiếp · Binance' + (WS.lag != null ? ' · giá trễ ~' + ms(Math.max(0, WS.lag)) : '');
     $('#lv-perf').textContent = S.after != null ? 'Nến gần nhất: có kết quả sau ' + ms(S.after) + ' kể từ lúc đóng (tính ' + ms(S.calc) + ')' : S.calc != null ? 'Phân tích mỗi lượt mất ' + ms(S.calc) : '';
     if (WS.sock && Date.now() - WS.last > 10000) drop();
     IDS.forEach((id) => { const q = SY[id]; if (!q.ready) return; const exp = Math.floor(t / M15) * M15; if (exp > q.doneB && t - exp > 4000 && !q.wait && !q.syncing && Date.now() - (q.syncAt || 0) > 5000) { q.syncAt = Date.now(); resync(q); } preview(q); });
@@ -234,16 +251,16 @@
     $('#lv-awake').onclick = async () => {
       const b = $('#lv-awake'); try { if (lock) { await lock.release(); lock = null; } else { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; b.classList.remove('on'); }); } b.classList.toggle('on', !!lock); } catch (e) { b.textContent = 'Máy không hỗ trợ giữ sáng'; }
     };
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (Date.now() - WS.last > 4000) drop(); IDS.forEach((id) => resync(SY[id])); } });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (Date.now() - WS.last > 4000) drop(); if (DS && !DS.alive) { DS.close(); connectDeriv(); } IDS.forEach((id) => resync(SY[id])); } });
     if (navigator.serviceWorker) navigator.serviceWorker.register('../sw.js').catch(() => {});
     setInterval(tick, 250);
     const t0 = performance.now();
     await Promise.all([syncClock(), loadCal()]);
     await Promise.all(IDS.map(async (id) => {
       const S = SY[id];
-      for (;;) { try { await load(S); break; } catch (e) { S.error = 'Không tải được dữ liệu, đang thử lại…'; await new Promise((r) => setTimeout(r, 3000)); } }
+      for (let n = 0; ; n++) { try { await load(S); break; } catch (e) { S.error = 'Không tải được dữ liệu, đang thử lại…'; if (S.cfg.feed === 'deriv' && n >= 1) { S.cfg = Object.assign({}, S.cfg, { feed: null }); S.backup = true; } else await new Promise((r) => setTimeout(r, 2000)); } }
     }));
-    connect(); spot();
+    connect(); connectDeriv(); spot();
     for (const id of [cur].concat(IDS.filter((x) => x !== cur))) { const S = SY[id]; await replay(S); S.ready = true; S.error = null; render(true); console.log(id, 'sẵn sàng sau', Math.round(performance.now() - t0), 'ms'); }
     IDS.forEach((id) => resync(SY[id]));
     setInterval(loadCal, 600000); setInterval(spot, 120000); setInterval(syncClock, 600000);

@@ -36,6 +36,6 @@ module.exports = function chartSvg(m15, s, info) {
   o += '<text x="' + L + '" y="26" font-size="19" font-weight="bold" fill="' + FG + '">' + esc(info.name || 'XAUUSD') + ' 15m · ' + (buy ? 'MUA' : 'BÁN') + ' · ' + esc(s.title) + '</text>';
   o += '<text x="' + L + '" y="48" font-size="13" fill="' + MUTE + '">Điểm ' + s.score + '/100 (' + s.grade + ') · RR TP1 1:' + s.rr1 + ' · TP2 1:' + s.rr2 + ' · rủi ro $' + f2(s.risk) + (info.unit == null ? '/oz' : info.unit) + '</text>';
   o += '<text x="' + L + '" y="' + (H - 40) + '" font-size="12.5" fill="' + FG + '">' + esc(info.bias) + '</text>';
-  o += '<text x="' + L + '" y="' + (H - 20) + '" font-size="11.5" fill="' + MUTE + '">' + esc(info.when) + ' · ' + esc(info.foot || 'dữ liệu PAXG, đã quy đổi về giá spot gần đúng') + ' · nội dung giáo dục, không phải lời khuyên đầu tư</text>';
+  o += '<text x="' + L + '" y="' + (H - 20) + '" font-size="11.5" fill="' + MUTE + '">' + esc(info.when) + ' · ' + esc(info.foot || 'dữ liệu Deriv XAU/USD') + ' · nội dung giáo dục, không phải lời khuyên đầu tư</text>';
   return o + '</svg>';
 };

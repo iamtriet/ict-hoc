@@ -17,11 +17,11 @@ module.exports = function (A) {
   const arrow = (d) => (d > 0 ? '▲' : d < 0 ? '▼' : '–');
   const lean = (d) => (d > 0 ? '▲ canh MUA' : d < 0 ? '▼ canh BÁN' : 'đứng ngoài');
   /* r = { id, price, dec, dir, ageMin } */
-  const symbolLine = (r) => '<b>' + r.id + '</b> ' + (+r.price).toFixed(r.dec) + ' · ' + lean(r.dir) + (r.ageMin > 45 ? ' · thị trường nghỉ/dữ liệu chậm' : '');
+  const symbolLine = (r) => '<b>' + r.id + '</b> ' + (+r.price).toFixed(r.dec) + ' · ' + lean(r.dir) + (r.ageMin > 45 ? ' · thị trường nghỉ/dữ liệu chậm' : '') + (r.note ? ' · ' + r.note : '');
 
   function setup(s, c) {
     const { cfg, res } = c, buy = s.dir === 'BUY', side = buy ? 'MUA' : 'BÁN', f = (x) => (+x).toFixed(cfg.dec);
-    const model = s.model === 'PA' ? 'Price Action' : s.model, t = ((A.CORE_TESTS || {})[cfg.id] || {})[s.model], mark = t ? (t.ok ? ' ✔ đã kiểm chứng' : ' ✖ chưa đạt kiểm chứng') : '';
+    const model = s.model === 'PA' ? 'Price Action' : s.model, t = ((A.CORE_TESTS || {})[cfg.id] || {})[s.model], mark = t ? (t.dv && t.dv[2] <= 0 ? ' ✖ lỗ khi đo trên giá Deriv' : t.ok ? ' ✔ đã kiểm chứng' : ' ✖ chưa đạt kiểm chứng') : '';
     const action = s.state === 'pending' ? '<b>' + side + ' limit ' + f(s.entry) + '</b> · lệnh chờ, không vào ở giá hiện tại' : s.state === 'inzone' ? '<b>' + side + ' quanh ' + f(s.entry) + '</b> · giá đang trong vùng, chờ phản ứng' : s.state === 'active' ? '<b>' + side + ' tại ' + f(s.entry) + '</b> · nến xác nhận vừa đóng' : '<b>Entry ' + f(s.entry) + '</b>';
     const head = [(buy ? '🟢' : '🔴') + ' <b>' + side + ' ' + cfg.name + '</b> · điểm <b>' + s.score + '</b> (' + s.grade + ')', model + mark, '',
       action, 'SL ' + f(s.sl) + ' (rủi ro $' + f(s.risk) + cfg.unit + ')', 'TP1 ' + f(s.tp1) + ' (1:' + s.rr1 + ') · TP2 ' + f(s.tp2) + ' (1:' + s.rr2 + ')'];
@@ -37,6 +37,7 @@ module.exports = function (A) {
     const yes = list.filter((k) => k.ok).map((k) => esc(short(k.label))), no = list.filter((k) => !k.ok).map((k) => esc(short(k.label)));
     const yesLine = yes.length ? '✔ ' + yes.join(' · ') : null, noLine = no.length ? '✖ ' + no.join(' · ') : null;
     const warn = [];
+    if (c.note) warn.push('⚠️ ' + esc(c.note));
     if (B && B.t4.dir && B.t1.dir && B.t4.dir !== B.t1.dir) warn.push('⚠️ 4H và 1H ngược hướng: độ tin cậy thấp');
     if (synth.length) warn.push('⚠️ Mục tiêu thiếu thanh khoản rõ ràng');
     const next = (A.newsState(c.events || [], c.now || Date.now()).next || [])[0];
