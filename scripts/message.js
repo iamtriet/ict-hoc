@@ -10,6 +10,9 @@ const plain = (h) => String(h).replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').rep
 const short = (t) => String(t).replace(/\s*\([^()]*\)/g, '').replace(' của nhịp đẩy', '');
 const LIMIT = 1000; // chú thích ảnh Telegram tối đa 1024 ký tự
 
+/* giá đã đi được bao nhiêu phần đường từ entry tới TP1 (1 = đã chạm TP1) */
+const progress = (s, price) => (price - s.entry) / (s.tp1 - s.entry);
+
 module.exports = function (A) {
   const arrow = (d) => (d > 0 ? '▲' : d < 0 ? '▼' : '–');
   const lean = (d) => (d > 0 ? '▲ canh MUA' : d < 0 ? '▼ canh BÁN' : 'đứng ngoài');
@@ -19,9 +22,15 @@ module.exports = function (A) {
   function setup(s, c) {
     const { cfg, res } = c, buy = s.dir === 'BUY', side = buy ? 'MUA' : 'BÁN', f = (x) => (+x).toFixed(cfg.dec);
     const model = s.model === 'PA' ? 'Price Action' : s.model, t = ((A.CORE_TESTS || {})[cfg.id] || {})[s.model], mark = t ? (t.ok ? ' ✔ đã kiểm chứng' : ' ✖ chưa đạt kiểm chứng') : '';
-    const action = s.state === 'pending' ? '<b>' + side + ' limit ' + f(s.entry) + '</b>' : s.state === 'inzone' ? '<b>' + side + ' quanh ' + f(s.entry) + '</b> · giá đang trong vùng, chờ phản ứng' : s.state === 'active' ? '<b>' + side + ' tại ' + f(s.entry) + '</b> · nến xác nhận vừa đóng' : '<b>Entry ' + f(s.entry) + '</b>';
+    const action = s.state === 'pending' ? '<b>' + side + ' limit ' + f(s.entry) + '</b> · lệnh chờ, không vào ở giá hiện tại' : s.state === 'inzone' ? '<b>' + side + ' quanh ' + f(s.entry) + '</b> · giá đang trong vùng, chờ phản ứng' : s.state === 'active' ? '<b>' + side + ' tại ' + f(s.entry) + '</b> · nến xác nhận vừa đóng' : '<b>Entry ' + f(s.entry) + '</b>';
     const head = [(buy ? '🟢' : '🔴') + ' <b>' + side + ' ' + cfg.name + '</b> · điểm <b>' + s.score + '</b> (' + s.grade + ')', model + mark, '',
       action, 'SL ' + f(s.sl) + ' (rủi ro $' + f(s.risk) + cfg.unit + ')', 'TP1 ' + f(s.tp1) + ' (1:' + s.rr1 + ') · TP2 ' + f(s.tp2) + ' (1:' + s.rr2 + ')'];
+    // giá lúc gửi và giờ nến tạo tín hiệu: để biết lệnh còn cách bao xa, giá đã chạy tới đâu
+    const live = c.live != null ? c.live : res.price, waiting = s.state === 'pending' || s.state === 'inzone';
+    head.push('💲 Giá lúc gửi <b>' + f(live) + '</b> · cách entry ' + f(Math.abs(live - s.entry)) + (s.t0 ? ' · tín hiệu từ nến đóng ' + hm(s.t0 + 900000) : ''));
+    const run = waiting ? progress(s, live) : 0;
+    if (run >= 1) head.push('⛔ Giá đã chạm TP1 trước khi khớp: bỏ lệnh này');
+    else if (run >= 0.5) head.push('⚠️ Giá đã chạy ' + Math.round(run * 100) + '% đường tới TP1: chỉ chờ ở entry, không đuổi');
     const B = res.bias, ctx = [''];
     if (B) ctx.push('📊 4H ' + arrow(B.t4.dir) + ' · 1H ' + arrow(B.t1.dir) + ' · giá ' + Math.round(B.loc * 100) + '% range (' + (B.loc < 0.5 ? 'Discount' : 'Premium') + ')');
     const synth = s.checks.filter((k) => /^Mục tiêu thiếu/.test(k.label)), list = s.checks.filter((k) => synth.indexOf(k) < 0);
@@ -53,5 +62,5 @@ module.exports = function (A) {
     return lines.join('\n');
   }
   const connected = (rows, min) => ['✅ <b>Kết nối thành công</b> · gửi setup từ ' + min + ' điểm'].concat(rows.map((r) => symbolLine(r) + ' · ' + r.setups + ' setup')).join('\n');
-  return { setup, session, heartbeat, connected, symbolLine, plain, LIMIT };
+  return { setup, session, heartbeat, connected, symbolLine, progress, plain, LIMIT };
 };

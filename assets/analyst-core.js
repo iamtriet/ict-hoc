@@ -137,7 +137,7 @@
         if (tp1 && x.h >= s.tp2) { state = 'tp2'; R = 0.5 * r1 + 0.5 * r2; exit = j; break; }
       }
     }
-    if (fill == null && state === 'pending') { const x = b[n - 1]; if (x.l <= s.zoneTop && s.model !== 'PA') state = 'inzone'; }
+    if (fill == null && state === 'pending') { const x = b[n - 1]; if (x.c <= s.zoneTop && s.model !== 'PA') state = 'inzone'; }
     if (R == null && fill != null) { const c = b[last].c; R = tp1 ? 0.5 * r1 + 0.5 * ((c - s.entry) / risk) : (c - s.entry) / risk; }
     return { state, fill, exit, R, tp1, r1, r2 };
   }

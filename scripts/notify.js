@@ -22,9 +22,16 @@ const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt
 
 /* ---- dữ liệu: Binance (vision) → Binance → Kraken ---- */
 async function getJSON(url) { const r = await fetch(url, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error(url.split('/')[2] + ' HTTP ' + r.status); return r.json(); }
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+const TFMS = { '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000 };
 async function binance(host, bn) {
-  const get = async (iv, n) => (await getJSON(host + '/api/v3/klines?symbol=' + bn + '&interval=' + iv + '&limit=' + n)).map((k) => ({ t: k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4] })).slice(0, -1);
-  return { m15: await get('15m', 1000), h1: await get('1h', 1000), h4: await get('4h', 500), m5: await get('5m', 1000).catch(() => []), src: host.split('/')[2] };
+  const raw = async (iv, n) => (await getJSON(host + '/api/v3/klines?symbol=' + bn + '&interval=' + iv + '&limit=' + n)).map((k) => ({ t: k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4] }));
+  const closed = (a, iv) => a.filter((x) => x.t + TFMS[iv] <= Date.now());
+  const get = async (iv, n) => closed(await raw(iv, n), iv);
+  // quét ngay sau khi nến 15m đóng: chờ tới khi nến kỳ mới xuất hiện (chắc rằng nến trước đã chốt), tối đa ~8 giây
+  let first = await raw('15m', 1000);
+  for (let i = 0; i < 4 && first.length && first[first.length - 1].t < Math.floor(Date.now() / 900000) * 900000; i++) { await pause(2000); first = await raw('15m', 1000); }
+  return { m15: closed(first, '15m'), h1: await get('1h', 1000), h4: await get('4h', 500), m5: await get('5m', 1000).catch(() => []), src: host.split('/')[2] };
 }
 async function kraken(pair) {
   const get = async (iv) => { const j = await getJSON('https://api.kraken.com/0/public/OHLC?pair=' + pair + '&interval=' + iv); if (j.error && j.error.length) throw new Error('kraken ' + j.error[0]); const k = Object.values(j.result).find(Array.isArray); return k.map((x) => ({ t: x[0] * 1000, o: +x[1], h: +x[2], l: +x[3], c: +x[4] })).slice(0, -1); };
@@ -40,6 +47,12 @@ async function offsetOf(last) {
   if (env.PRICE_OFFSET === 'none') return 0;
   try { const j = await getJSON('https://api.gold-api.com/price/XAU'), off = Math.round((j.price - last) * 100) / 100; if (Math.abs(off) <= 25) return off; console.log('Bỏ qua chênh lệch spot bất thường:', off); } catch (e) { console.log('Không lấy được giá spot:', e.message); }
   return 0;
+}
+
+/* giá đang giao dịch lúc gửi tin (đã quy đổi như dữ liệu nến); không lấy được thì dùng giá đóng cửa nến cuối */
+async function liveOf(cfg, off, fallback) {
+  if (env.ASOF) return fallback;
+  try { const j = await getJSON('https://data-api.binance.vision/api/v3/ticker/price?symbol=' + cfg.bn); return +j.price > 0 ? +j.price + off : fallback; } catch (e) { return fallback; }
 }
 
 /* ---- trạng thái chống trùng ---- */
@@ -167,7 +180,10 @@ async function scan(id, st) {
     if (s.model === 'PA' && F.m15.length - 1 - s.ready > 1 && !FORCE) continue;
     const key = id === 'XAUUSD' ? s.id : id + ':' + s.id;
     if (st.sent[key] && !FORCE) continue;
-    const text = msg.setup(s, { cfg, res, events: EV, site: SITE }); // một tin duy nhất: chú thích đi cùng album ảnh
+    const live = await liveOf(cfg, off, res.price);
+    // quy tắc hủy: giá đã chạm TP1 mà chưa khớp thì lệnh không còn giá trị, không gửi
+    if (s.model === 'ICT' && msg.progress(s, live) >= 1 && !FORCE) { st.sent[key] = Date.now(); console.log('Bỏ qua', key, s.dir, s.score, ': giá', live, 'đã chạm TP1', s.tp1, 'trước khi khớp'); continue; }
+    const text = msg.setup(s, { cfg, res, events: EV, site: SITE, live }); // một tin duy nhất: chú thích đi cùng album ảnh
     if (DRY) console.log('\n' + msg.plain(text));
     await sendImages(job(s), text);
     st.sent[key] = Date.now(); sent++; console.log('Đã xử lý', key, s.dir, s.score);
