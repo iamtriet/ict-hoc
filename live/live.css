@@ -1,0 +1,25 @@
+/* ICT Live: một cột trên điện thoại, hai cột trên máy tính */
+body.lv { margin: 0; display: block; }
+.lv-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 5; }
+.lv-top a { font-size: 20px; color: var(--mute); text-decoration: none; } .lv-top h1 { font: 800 19px var(--disp); margin: 0; }
+.lv-top button { background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font: 600 12.5px var(--ui); cursor: pointer; } .lv-top button.on { background: var(--accent-bg); color: var(--accent-ink); border-color: transparent; }
+#lv-conn { font: 600 12.5px var(--mono); margin-right: auto; } #lv-conn.on { color: var(--bull); } #lv-conn.off { color: var(--warn); } #lv-conn::before { content: "● "; }
+.lv-main { max-width: 1280px; margin: 0 auto; padding: 12px 16px 24px; }
+#lv-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+#lv-tabs button { display: flex; align-items: center; gap: 10px; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 9px 14px; cursor: pointer; font: 700 14px var(--ui); } #lv-tabs button.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.lv-px { font: 700 18px var(--mono); margin-left: auto; } .lv-badge { font-style: normal; font: 700 12px var(--ui); background: var(--accent-bg); color: var(--accent-ink); border-radius: 999px; min-width: 20px; padding: 1px 6px; } .lv-badge:empty { display: none; }
+.lv-clock { margin: 10px 0; font-size: 13px; color: var(--mute); } .lv-clock b { font: 700 16px var(--mono); color: var(--fg); } .lv-track { height: 4px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 4px 0; } .lv-track i { display: block; height: 100%; background: var(--accent); width: 0; }
+.lv-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; align-items: start; }
+.lv-col { min-width: 0; } #lv-chart { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; position: sticky; top: 66px; }
+.lv-v { background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--info); border-radius: 12px; padding: 12px 16px; } .lv-v.v-ok { border-left-color: var(--bull); } .lv-v.v-no { border-left-color: var(--bear); } .lv-v.v-warn { border-left-color: var(--warn); }
+.lv-vh { font: 800 clamp(20px, 3.4vw, 27px) var(--disp); color: var(--info); } .v-ok .lv-vh { color: var(--bull); } .v-no .lv-vh { color: var(--bear); } .v-warn .lv-vh { color: var(--warn); }
+.lv-v p { margin: 6px 0 0; font-size: 14.5px; } .lv-sub, .lv-v p.lv-sub { font-size: 12.5px; color: var(--mute); margin: 5px 0 0; } .wn, .lv-v p.wn { color: var(--warn); }
+.lv-main h2 { font: 700 15px var(--disp); margin: 16px 0 6px; } .lv-main h2 em { font-style: normal; font-size: 12px; color: var(--faint); margin-left: 4px; }
+.lv-card { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; } .lv-card.b { border-left-color: var(--bull); } .lv-card.s { border-left-color: var(--bear); } .lv-card.prov { border-style: dashed; border-color: var(--warn); } .lv-card.done { opacity: .75; }
+.lv-h { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; } .lv-sc { margin-left: auto; font: 700 12.5px var(--mono); color: var(--mute); }
+.lv-state { font: 700 14px var(--ui); margin: 7px 0; } .lv-state.wait { color: var(--warn); } .lv-state.run { color: var(--info); } .lv-state.prov { color: var(--warn); }
+.lv-lv { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; } .lv-lv div { background: var(--tint); border-radius: 7px; padding: 5px 7px; } .lv-lv i { display: block; font-style: normal; font-size: 10.5px; color: var(--faint); } .lv-lv b { font: 700 14.5px var(--mono); }
+.lv-donebox { margin-top: 14px; } .lv-donebox summary { cursor: pointer; font-weight: 700; }
+.lv-disc { font-size: 12px; color: var(--faint); text-align: center; margin-top: 18px; }
+@media (max-width: 900px) { .lv-grid { grid-template-columns: 1fr; } #lv-chart { position: static; } }
+@media (max-width: 480px) { .lv-lv { grid-template-columns: repeat(2, minmax(0, 1fr)); } #lv-tabs button { padding: 8px 10px; gap: 6px; font-size: 12.5px; } .lv-px { font-size: 15px; } .lv-main { padding: 10px 12px 20px; } }

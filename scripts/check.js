@@ -6,7 +6,7 @@ const ROOT = path.join(__dirname, '..'); let bad = 0;
 const fail = (m) => { bad++; console.log('✖ ' + m); }, ok = (m) => console.log('✔ ' + m);
 
 // 1. cú pháp
-const files = ['sw.js'].concat(fs.readdirSync(path.join(ROOT, 'assets')).filter((f) => f.endsWith('.js')).map((f) => 'assets/' + f), fs.readdirSync(__dirname).filter((f) => f.endsWith('.js')).map((f) => 'scripts/' + f));
+const files = ['sw.js'].concat(fs.readdirSync(path.join(ROOT, 'assets')).filter((f) => f.endsWith('.js')).map((f) => 'assets/' + f), fs.readdirSync(__dirname).filter((f) => f.endsWith('.js')).map((f) => 'scripts/' + f), fs.readdirSync(path.join(ROOT, 'live')).filter((f) => f.endsWith('.js')).map((f) => 'live/' + f));
 files.forEach((f) => { try { new vm.Script(fs.readFileSync(path.join(ROOT, f), 'utf8'), { filename: f }); } catch (e) { fail('Cú pháp ' + f + ': ' + e.message); } });
 if (!bad) ok('Cú pháp ' + files.length + ' file JS');
 
@@ -122,6 +122,32 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
     if (!n) throw new Error('không có setup mẫu');
     ok('Tin Telegram: ' + n + ' mẫu hợp lệ, dài nhất ' + longest + ' ký tự');
   } catch (e) { fail('tin Telegram: ' + e.message); }
+  // trang trực tiếp: sổ tín hiệu giữ nguyên mức giá và tính trạng thái đúng
+  try {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'live/signals.js'), 'utf8'), win, { filename: 'live/signals.js' });
+    const SG = win.ICT.signals, M = SG.M15, rec = { model: 'ICT', dir: 'SELL', entry: 100, sl: 102, tp1: 97, tp2: 95, rr1: 1.5, rr2: 2.5, t: 10 * M };
+    const bars = (list) => list.map((x, i) => ({ t: (10 + i) * M, o: x[0], h: x[1], l: x[2], c: x[3] })), st = (list, r) => SG.status(r || rec, bars(list));
+    const want = (name, got, state) => { if (got.state !== state) throw new Error(name + ': mong ' + state + ', được ' + got.state); };
+    want('chưa chạm', st([[98, 99, 97.5, 98]]), 'pending');
+    want('chạm TP1 trước khi khớp', st([[98, 99, 96.8, 97]]), 'missed');
+    want('khớp rồi đang chạy', st([[99, 100.2, 98.5, 99]]), 'active');
+    want('khớp và chạm SL cùng nến', st([[99, 102.5, 96, 101]]), 'sl');
+    want('qua TP1', st([[99, 100.1, 99, 99.5], [99, 99.5, 96.9, 97.2]]), 'tp1');
+    want('tới TP2', st([[99, 100.1, 99, 99.5], [99, 99.5, 96.9, 97.2], [97, 97.5, 94.8, 95]]), 'tp2');
+    want('TP1 rồi hòa vốn', st([[99, 100.1, 99, 99.5], [99, 99.5, 96.9, 97.2], [97, 100.3, 97, 100]]), 'tp1be');
+    want('hết hạn', st(Array.from({ length: 38 }, () => [98, 99, 97.5, 98])), 'expired');
+    want('bỏ qua nến trước tín hiệu', SG.status(rec, [{ t: 9 * M, o: 99, h: 105, l: 90, c: 99 }]), 'pending');
+    want('Price Action khớp ngay', st([[100, 100.5, 99, 99.5]], Object.assign({}, rec, { model: 'PA' })), 'active');
+    if (Math.abs(st([[99, 100.1, 99, 99]]).R - 0.5) > 1e-9) throw new Error('tính R đang chạy sai');
+    let n = 0, opened = 0;
+    for (const id of ids) {
+      const d = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', id + '.json'), 'utf8')), data = { m15: rows(d.m15), h1: rows(d.h1), h4: rows(d.h4) }, book = new Map(), first = new Map();
+      for (let k = 300; k >= 0; k--) { const T = data.m15[data.m15.length - 1 - k].t + M, r = SG.scanAt(data, T, { sym: id, events: [], news: false }, book); r.added.forEach((x) => { first.set(x.id, JSON.stringify([x.entry, x.sl, x.tp1, x.tp2])); if (x.t !== T || x.score < SG.MIN) throw new Error('bản ghi sai thời điểm hoặc dưới ngưỡng'); }); }
+      for (const x of book.values()) { n++; if (JSON.stringify([x.entry, x.sl, x.tp1, x.tp2]) !== first.get(x.id)) throw new Error('mức giá bị thay đổi sau khi ghi'); const s = SG.status(x, data.m15); if (!s.state) throw new Error('không có trạng thái'); if (SG.OPEN[s.state]) opened++; }
+    }
+    if (!n) throw new Error('không ghi được tín hiệu nào');
+    ok('Trang trực tiếp: sổ tín hiệu đúng (' + n + ' tín hiệu từ dữ liệu mẫu, ' + opened + ' còn mở)');
+  } catch (e) { fail('trang trực tiếp: ' + e.message); }
   // lịch tin: cửa sổ đứng ngoài đúng theo từng loại tin
   const fb = A.fallbackEvents(Date.UTC(2026, 10, 25)), has = (t, ti) => fb.some((e) => e.t === t && e.title === ti);
   if (!has(Date.UTC(2026, 11, 4, 13, 30), 'Non-Farm Employment Change') || !has(Date.UTC(2026, 11, 9, 19, 0), 'Federal Funds Rate')) fail('lịch dựng sẵn sai ngày NFP/FOMC');

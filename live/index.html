@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="vi" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICT Live</title>
+<meta name="description" content="Phân tích và gợi ý lệnh XAUUSD, BTCUSD theo thời gian thực. Nội dung giáo dục.">
+<meta name="theme-color" content="#0c1016">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="../icons/icon-192.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://data-api.binance.vision" crossorigin>
+<link rel="preconnect" href="https://stream.binance.com:9443">
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="live.css">
+</head>
+<body class="lv">
+<header class="lv-top">
+  <a href="../#analyst" title="Về trang học">←</a>
+  <h1>ICT Live</h1>
+  <span id="lv-conn" class="off">Đang kết nối…</span>
+  <button type="button" id="lv-sound">🔔 Bật chuông</button>
+  <button type="button" id="lv-awake">☀ Giữ sáng màn hình</button>
+</header>
+<main class="lv-main">
+  <nav id="lv-tabs"></nav>
+  <div class="lv-clock"><div><span>Nến 15m đóng sau</span> <b id="lv-cd">--:--</b></div><div class="lv-track"><i id="lv-bar"></i></div><p id="lv-perf" class="lv-sub"></p></div>
+  <div class="lv-grid">
+    <div class="lv-col">
+      <div id="lv-verdict"></div>
+      <section id="lv-prov"></section>
+      <section id="lv-open"></section>
+      <details class="lv-donebox"><summary>Đã kết thúc 24 giờ (<span id="lv-done-n">0</span>)</summary><div id="lv-done"></div></details>
+    </div>
+    <div class="lv-col"><div id="lv-chart" class="tvl"></div></div>
+  </div>
+  <p class="lv-disc">Nội dung giáo dục, không phải lời khuyên đầu tư. Giá từ Binance (vàng: PAXG quy đổi gần đúng về spot), đối chiếu broker trước khi vào lệnh.</p>
+</main>
+<script src="../assets/engine.js"></script>
+<script src="../assets/analyst-core.js"></script>
+<script src="../assets/analyst-models.js"></script>
+<script src="signals.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
