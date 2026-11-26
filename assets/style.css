@@ -223,6 +223,10 @@ abbr.ab:hover, abbr.ab:focus-visible { border-bottom-color: var(--accent); color
 .pbx.tp { fill: var(--bull); fill-opacity: .1; } .pbx.sl { fill: var(--bear); fill-opacity: .13; }
 .ax.ps-t { paint-order: stroke; stroke: var(--tvbg, var(--panel)); stroke-width: 3px; stroke-linejoin: round; font-weight: 700; }
 .ptag.peg { fill: var(--info); } .ptag.pslg { fill: var(--bear); } .ptag.ptpg { fill: var(--bull); } .ptx { fill: #fff; font: 700 10px var(--mono); }
+/* cỡ chữ trên biểu đồ nhân với --k (biểu đồ bật zoomText: to khi phóng to, nhỏ khi thu nhỏ); mặc định 1 */
+.ch-svg .ax { font-size: calc(10.5px * var(--k, 1)); } .ch-svg .bt { font-size: calc(9.5px * var(--k, 1)); } .ch-svg .sw { font-size: calc(9px * var(--k, 1)); } .ch-svg .ptx { font-size: calc(10px * var(--k, 1)); }
+.ch-svg .a .tx { font-size: calc(10.5px * var(--k, 1)); } .ch-svg .a .tx.sm { font-size: calc(9.5px * var(--k, 1)); } .ch-svg .a .tx.b { font-size: calc(11px * var(--k, 1)); }
+.ch-svg .tx.hl, .ch-svg .sw.hl { stroke-width: calc(3.5px * var(--k, 1)); } .ch-svg .tx.hl.in { stroke-width: calc(2.5px * var(--k, 1)); }
 @media (max-width: 900px) { .an-imgs.g2 { grid-template-columns: 1fr; } }
 
 .an-imgs .ch-info { flex: 1 1 100%; height: 30px; overflow: hidden; line-height: 15px; font-size: 11px; } .an-imgs .ch-bar { padding: 4px 10px 2px; gap: 2px 8px; } .an-imgs .ch-tg { gap: 3px; } .an-imgs .tg { padding: 1px 8px; font-size: 11px; }

@@ -164,13 +164,14 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
   try {
     const el = () => ({ clientWidth: 700, scrollWidth: 700, style: {}, children: [], innerHTML: '', textContent: '', setAttribute() {}, appendChild() {}, addEventListener() {}, classList: { add() {}, toggle() {} } });
     const bars = Array.from({ length: 100 }, (_, i) => ({ t: Date.UTC(2026, 0, 6) + i * 900000, o: 100, h: 101, l: 99, c: 100.5 }));
-    const draw = (clip) => {
-      const parts = {}, host = Object.assign(el(), { querySelector: (q) => (parts[q] = parts[q] || el()) }), S = win.ICT.defRaw('chk', bars, { sym: 'XAUUSD', title: 'thử', max: bars.length }), U = (p) => (p - S.base) / S.pip;
+    const draw = (clip, zoom) => {
+      const parts = {}, host = Object.assign(el(), { querySelector: (q) => (parts[q] = parts[q] || Object.assign(el(), { style: { setProperty(n, v) { this[n] = v; } } })) }), S = win.ICT.defRaw('chk', bars, { sym: 'XAUUSD', title: 'thử', max: bars.length }), U = (p) => (p - S.base) / S.pip;
       const zone = (text, x1, x2, a, b) => ({ t: 'zone', x1, x2, y1: U(a), y2: U(b), text, c: 'bull' });
       S.ann = [zone('CU', 0, 5, 100, 101), zone('TRONG', 60, 75, 99.5, 100.5), zone('CAO', 60, 75, 500, 501), zone('THOMOTPHAN', 78, 95, 100, 500), zone('DANGMO', 0, 'end', 99, 99.4),
         zone('MAUTHUA', 30, 51, 99.5, 100.5), zone('VUNGHEP', 70, 71, 105, 106),
         { t: 'hline', y: U(100.2), x1: 0, x2: 3, text: 'VACHCU', c: 'warn' }, { t: 'hline', y: U(500), x1: 0, x2: 'end', text: 'VACHCAO', c: 'warn' }];
-      win.ICT.Chart(host, S, { layers: ['ann'], range: [50, 100], frames: false, h: 300, slotMin: 1, clip });
+      win.ICT.Chart(host, S, { layers: ['ann'], range: zoom ? zoom.range : [50, 100], frames: false, h: 300, slotMin: 1, clip, zoomText: !!zoom });
+      if (zoom) return +parts.svg.style['--k'];
       return parts.svg.innerHTML;
     };
     const on = draw(true), has = (s, t) => s.indexOf('>' + t + '</text>') >= 0;
@@ -181,10 +182,13 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
     const hep = on.match(/ x="([-\d.]+)" y="[-\d.]+">VUNGHEP<\/text>/); // cây nến 70 nằm quanh x = 241
     if (!hep || Math.abs(+hep[1] + 20 - 246) > 60) throw new Error('nhãn của vùng hẹp trôi xa vùng: ' + (hep ? hep[1] : 'không thấy'));
     if (!has(draw(false), 'CU')) throw new Error('biểu đồ bài học (không cắt) bị đổi cách vẽ');
-    ok('Biểu đồ: chú thích ngoài khung đang xem được ẩn');
+    const kIn = draw(true, { range: [85, 100] }), kMid = draw(true, { range: [40, 100] }), kOut = draw(true, { range: [0, 100] });
+    if (!(kIn > kMid && kMid > kOut && kIn <= 1.3 && kOut >= 0.72)) throw new Error('cỡ chữ không to khi phóng to / nhỏ khi thu nhỏ: ' + [kIn, kMid, kOut]);
+    ok('Biểu đồ: chú thích ngoài khung đang xem được ẩn, cỡ chữ theo mức phóng');
   } catch (e) { fail('biểu đồ: ' + e.message); }
   // nguồn giá Deriv:ghép trang lịch sử, tách nến đang chạy, chốt nến khi sang kỳ mới (máy chủ giả, không cần mạng)
   try { await require('./deriv-test.js')(ROOT); ok('Nguồn giá Deriv: ghép trang, tách nến đang chạy và chốt nến đúng'); } catch (e) { fail('nguồn giá Deriv: ' + e.message); }
+  try { await require('./coinbase-test.js')(ROOT); ok('Nguồn giá Coinbase: ghép trang, ghép 4H và dựng nến từ lệnh khớp đúng'); } catch (e) { fail('nguồn giá Coinbase: ' + e.message); }
   // lịch tin: cửa sổ đứng ngoài đúng theo từng loại tin
   const fb = A.fallbackEvents(Date.UTC(2026, 10, 25)), has = (t, ti) => fb.some((e) => e.t === t && e.title === ti);
   if (!has(Date.UTC(2026, 11, 4, 13, 30), 'Non-Farm Employment Change') || !has(Date.UTC(2026, 11, 9, 19, 0), 'Federal Funds Rate')) fail('lịch dựng sẵn sai ngày NFP/FOMC');

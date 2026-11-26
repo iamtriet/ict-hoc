@@ -22,3 +22,5 @@ jobs:
       # chỉ để biết máy GitHub có lấy được giá Deriv không (bot có nguồn dự phòng nên không làm hỏng kiểm tra)
       - run: node scripts/probe-deriv.js
         continue-on-error: true
+      - run: node scripts/probe-coinbase.js
+        continue-on-error: true

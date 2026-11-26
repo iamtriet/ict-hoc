@@ -1,4 +1,4 @@
-/* ICT Hub — Trang "Phân tích & gợi ý lệnh": tải nến thật (chạy trên máy: MetaTrader 5; web: vàng Deriv, dự phòng PAXG; BTC Binance),
+/* ICT Hub — Trang "Phân tích & gợi ý lệnh": tải nến thật (chạy trên máy: MetaTrader 5; web: vàng Deriv, dự phòng PAXG; BTC Coinbase, dự phòng Binance),
    chạy lõi phân tích, giữ sổ tín hiệu như trang trực tiếp (live/signals.js), vẽ ảnh đa khung, xuất PNG, kiểm chứng. */
 (function () {
   'use strict';
@@ -7,6 +7,7 @@
   let SYM = A.SYMS.XAUUSD; // mã đang phân tích
   const f2 = (x) => (+x).toFixed(SYM.dec);
   const feedNow = () => (RAW && RAW.sym === SYM.id ? RAW.feed : null);
+  const onCb = () => feedNow() === 'coinbase', BN_NOTE = 'Không truy cập được Coinbase: đang dùng tạm Binance BTC/USDT, giá cao hơn BTC/USD vài chục USD.';
   const onDeriv = () => feedNow() === 'deriv', onMt5 = () => feedNow() === 'mt5', local = () => !!(ICT.mt5 && ICT.mt5.local());
   const onPaxg = () => SYM.id === 'XAUUSD' && !onDeriv() && !onMt5(); // vàng đang phải lấy tạm từ PAXG
   const offOf = () => (onPaxg() ? +cfgGet().off || 0 : 0); // chênh lệch giá chỉ dùng cho giá tạm PAXG
@@ -61,6 +62,7 @@
   const DKEY = { '5m': 'm5', '15m': 'm15', '1h': 'h1', '4h': 'h4', '1d': 'd1' };
   async function klines(iv, total, bn) {
     if (!bn && onMt5()) { const k = DKEY[iv], r = await ICT.mt5.fetch(SYM.id, { [k]: total }); return r.open[k] ? r[k].concat([r.open[k]]) : r[k]; }
+    if (!bn && onCb()) { const k = DKEY[iv], r = await ICT.coinbase.fetch(SYM.cb, { [k]: total }); return r.open[k] ? r[k].concat([r.open[k]]) : r[k]; }
     if (!bn && onDeriv()) { const k = DKEY[iv], r = await ICT.deriv.fetch(SYM.dsym, { [k]: total }); return r.open[k] ? r[k].concat([r.open[k]]) : r[k]; }
     let out = [], end = null; bn = bn || SYM.bn;
     while (out.length < total) {
@@ -85,6 +87,9 @@
     if (A.SYMS[id].feed === 'deriv') {
       try { const r = await ICT.deriv.fetch(A.SYMS[id].dsym, NEED); if (r.m15.length < 400) throw new Error('ít nến'); return pack(r, { feed: 'deriv' }); } catch (e) { console.warn('Deriv:', e.message || e); }
     }
+    if (A.SYMS[id].feed === 'coinbase') { // BTC: Coinbase (BTC/USD, sát giá sàn); không truy cập được thì tạm dùng Binance
+      try { const r = await ICT.coinbase.fetch(A.SYMS[id].cb, NEED); if (r.m15.length < 400) throw new Error('ít nến'); return pack(r, { feed: 'coinbase' }); } catch (e) { console.warn('Coinbase:', e.message || e); }
+    }
     const bn = A.SYMS[id].bn, [m15, h1, h4, m5, d1] = await Promise.all([klines('15m', NEED.m15 + 1, bn), klines('1h', NEED.h1 + 1, bn), klines('4h', 1000, bn), klines('5m', 1000, bn), klines('1d', 1000, bn)]);
     return { m15: closed(m15), h1: closed(h1), h4: closed(h4), m5: closed(m5), d1: closed(d1), at: Date.now(), sym: id, bn, feed: 'binance' };
   }
@@ -93,7 +98,7 @@
   async function refreshRaw(raw) {
     const spec = [['m15', '15m'], ['h1', '1h'], ['h4', '4h'], ['m5', '5m'], ['d1', '1d']], nr = { sym: raw.sym, bn: raw.bn, feed: raw.feed, msym: raw.msym, dec: raw.dec, at: Date.now() };
     let parts;
-    if (raw.feed === 'deriv' || raw.feed === 'mt5') { const few = { m15: 12, h1: 12, h4: 12, m5: 12, d1: 5 }, r = raw.feed === 'mt5' ? await ICT.mt5.fetch(raw.sym, few) : await ICT.deriv.fetch(A.SYMS[raw.sym].dsym, few); parts = spec.map((x) => r[x[0]].concat([r.open[x[0]] || { t: Infinity }])); } else parts = await Promise.all(spec.map((x) => klines(x[1], 12, raw.bn))); // phần tử cuối là nến đang chạy
+    if (raw.feed !== 'binance') { const few = { m15: 12, h1: 12, h4: 12, m5: 12, d1: 5 }, r = raw.feed === 'mt5' ? await ICT.mt5.fetch(raw.sym, few) : raw.feed === 'coinbase' ? await ICT.coinbase.fetch(A.SYMS[raw.sym].cb, few) : await ICT.deriv.fetch(A.SYMS[raw.sym].dsym, few); parts = spec.map((x) => r[x[0]].concat([r.open[x[0]] || { t: Infinity }])); } else parts = await Promise.all(spec.map((x) => klines(x[1], 12, raw.bn))); // phần tử cuối là nến đang chạy
     spec.forEach((x, i) => {
       const k = x[0], arr = raw[k].slice(), got = closed(parts[i]); if (!arr.length || !got.length) throw new Error('thiếu nến');
       if (got[0].t > arr[arr.length - 1].t + TFV[k]) throw new Error('lệch dữ liệu');
@@ -158,7 +163,7 @@
     const build0 = (rows, key, anns, extra, defStart) => {
       const S = mkS(rows, SYM.name + ' ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, Math.min(defStart || 0, rows.length - 20));
       const sn = SNAP && SNAP[key]; let rg = [ds, rows.length]; if (sn) { const e = Math.max(20, Math.min(rows.length, rows.length - sn.tail)); rg = [Math.max(0, e - sn.n), e]; }
-      const opt = Object.assign({ pos: mkPos(rows, U), range: rg, h: 320, slotMin: 1, frames: false, lastLine: true, clip: true }, extra || {}, SHOT || {}); if (sn) opt.layers = sn.layers;
+      const opt = Object.assign({ pos: mkPos(rows, U), range: rg, h: 320, slotMin: 1, frames: false, lastLine: true, clip: true, zoomText: !SHOT }, extra || {}, SHOT || {}); // ảnh Telegram giữ cỡ chữ gốc if (sn) opt.layers = sn.layers;
       const ch = put(hosts[key], S, anns(U).concat(pastAnn(rows, U)), opt);
       LVR.push({ key, S, ch, fig: hosts[key].closest('figure'), t: rows[rows.length - 1].t }); ZM.set(hosts[key].closest('figure'), { ch, len: rows.length, pad: (extra && extra.pad) || 12, s: rg[0], e: rg[1], def: [ds, rows.length] });
     };
@@ -242,7 +247,7 @@
     const cv = document.createElement('canvas'); cv.width = W * sc; cv.height = 6000 * sc; const ctx = cv.getContext('2d'); ctx.scale(sc, sc);
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, 6000); ctx.fillStyle = fg; ctx.textBaseline = 'alphabetic';
     let y = pad + 18; ctx.font = 'bold 22px Arial'; ctx.fillText(SYM.name + ' · ' + (s ? s.dir + ' · ' + s.title : 'Phân tích đa khung'), pad, y); y += 24;
-    ctx.font = '13px Arial'; ctx.globalAlpha = 0.7; ctx.fillText(A.tm(res.now) + ' · dữ liệu ' + (onPaxg() && RAW ? 'PAXG (dự phòng)' : SYM.src) + (offOf() ? ' · đã cộng chênh lệch ' + f2(offOf()) : '') + ' · Giá ' + f2(res.price), pad, y); ctx.globalAlpha = 1; y += 22;
+    ctx.font = '13px Arial'; ctx.globalAlpha = 0.7; ctx.fillText(A.tm(res.now) + ' · dữ liệu ' + (onPaxg() && RAW ? 'PAXG (dự phòng)' : SYM.id === 'BTCUSD' && feedNow() === 'binance' ? 'Binance BTC/USDT (dự phòng)' : SYM.src) + (offOf() ? ' · đã cộng chênh lệch ' + f2(offOf()) : '') + ' · Giá ' + f2(res.price), pad, y); ctx.globalAlpha = 1; y += 22;
     if (s) {
       const cells = [['Entry', f2(s.entry)], ['SL', f2(s.sl)], ['TP1', f2(s.tp1) + ' (1:' + s.rr1 + ')'], ['TP2', f2(s.tp2) + ' (1:' + s.rr2 + ')'], ['Rủi ro' + SYM.unit, '$' + f2(s.risk)], ['Điểm', s.score + '/100 · ' + s.grade]];
       const cw = (W - pad * 2) / cells.length; cells.forEach((c, i) => { ctx.font = '12px Arial'; ctx.globalAlpha = 0.65; ctx.fillText(c[0], pad + i * cw, y); ctx.globalAlpha = 1; ctx.font = 'bold 17px Arial'; ctx.fillStyle = i === 1 ? '#e5484d' : i === 2 || i === 3 ? '#30a46c' : fg; ctx.fillText(c[1], pad + i * cw, y + 20); ctx.fillStyle = fg; }); y += 44;
@@ -363,6 +368,7 @@
     else { head = 'ĐỨNG NGOÀI'; cls = 'info'; tips = waitFor(res); }
     if (!res.closed && B.t4.dir && B.t1.dir && B.t4.dir !== B.t1.dir) tips.push('<em>4H và 1H đang ngược hướng: độ tin cậy thấp, chỉ xét lệnh điểm cao.</em>');
     if (MT.note && !ASOF) tips.push('<em>' + esc(MT.note) + '</em>');
+    if (SYM.id === 'BTCUSD' && feedNow() === 'binance' && !ASOF) tips.push('<em>' + BN_NOTE + '</em>');
     if (!res.closed && !res.setups.length && !anyEdge()) tips.push('<em>ICT và Price Action lỗ trong kiểm chứng ' + SYM.name + ': điều kiện chờ ở trên chỉ để quan sát.</em>');
     const dir = (t) => (t.dir > 0 ? '▲ Tăng' : t.dir < 0 ? '▼ Giảm' : 'Chưa rõ'), tf = (t, bars) => [dir(t), t.dir && bars[t.i] ? t.k + ' ' + dmVN(bars[t.i].t) : '', t.dir > 0 ? 'ok' : t.dir < 0 ? 'no' : ''];
     const tiles = [['Cấu trúc 4H'].concat(tf(B.t4, OUT.F.h4)), ['Cấu trúc 1H'].concat(tf(B.t1, OUT.F.h1)), ['Vị trí trong range 4H', Math.round(B.loc * 100) + '% · ' + (B.loc < 0.5 ? 'Discount' : 'Premium'), f2(B.range.lo) + ' – ' + f2(B.range.hi)], sessionTile(), newsTile(res)];
@@ -470,7 +476,7 @@
       const host = $('[data-ch=' + key + ']', card); if (!host) return;
       try {
         const S = mkS(rows, SYM.name + ' ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, rows.length - show);
-        const ch = put(host, S, annsOf(rows, U), { range: [ds, rows.length], h: 320, slotMin: 1, frames: false, lastLine: true, pad: 12, layers: ['ann'], fit: [U(x.entry), U(x.sl)] });
+        const ch = put(host, S, annsOf(rows, U), { range: [ds, rows.length], h: 320, slotMin: 1, frames: false, lastLine: true, zoomText: true, pad: 12, layers: ['ann'], fit: [U(x.entry), U(x.sl)] });
         LVR.push({ key, S, ch, fig: host.closest('figure'), t: rows[rows.length - 1].t, extra: true }); ZM.set(host.closest('figure'), { ch, len: rows.length, pad: 12, s: ds, e: rows.length, def: [ds, rows.length] });
       } catch (e) { console.error(e); host.innerHTML = '<div class="an-tvn">Không vẽ được khung ' + TFS[key][0] + ': ' + esc(e.message || String(e)) + '</div>'; }
     };
@@ -498,7 +504,7 @@
       '<li><b>Đứng ngoài quanh tin mạnh:</b> các tin USD mức High (lãi suất/FOMC, CPI, NFP, PCE, GDP, bán lẻ…) làm giá quét hai phía và spread nở rộng, nên công cụ không đưa lệnh từ trước tin 30–60 phút đến sau tin 30–90 phút (tin lãi suất/Fed có cửa sổ dài nhất). Áp dụng cho cả vàng và BTC.</li>' +
       '<li><b>Không phát tín hiệu</b> khi bias không rõ, ' + (SYM.closes ? 'thị trường vàng nghỉ cuối tuần, ' : '') + 'SL nhỏ hơn $' + (+A.cfg(SYM.id, RAW ? RAW.m15[RAW.m15.length - 1].c : 1).minRisk.toFixed(4)) + ' (gần bằng spread/phí), hoặc vào quá nông (đuổi giá).</li></ol>';
   }
-  const dataNote = () => (onMt5() ? 'Dữ liệu từ MetaTrader 5 trên máy này (' + RAW.msym + '), theo giá bid.' : (MT.note ? MT.note + ' ' : '') + (SYM.id !== 'XAUUSD' ? 'Dữ liệu ' + SYM.src + ', giao dịch 24/7.' : onDeriv() ? 'Dữ liệu XAU/USD từ Deriv.' : 'Không truy cập được Deriv: đang dùng tạm PAXG/USDT (Binance), quy đổi gần đúng về giá spot.')) + (SYM.bt ? ' ' + SYM.bt : '');
+  const dataNote = () => (onMt5() ? 'Dữ liệu từ MetaTrader 5 trên máy này (' + RAW.msym + '), theo giá bid.' : (MT.note ? MT.note + ' ' : '') + (SYM.id !== 'XAUUSD' ? (feedNow() === 'binance' ? BN_NOTE : 'Dữ liệu ' + SYM.src + ', giao dịch 24/7.') : onDeriv() ? 'Dữ liệu XAU/USD từ Deriv.' : 'Không truy cập được Deriv: đang dùng tạm PAXG/USDT (Binance), quy đổi gần đúng về giá spot.')) + (SYM.bt ? ' ' + SYM.bt : '');
   /* một mục gập duy nhất cuối trang cho mọi nội dung tham khảo */
   const refHtml = (res) => '<section class="an-card"><details class="an-keep" data-id="ref"><summary><b>Kiểm chứng, quy tắc và dữ liệu</b></summary><p class="an-line">' + esc(dataNote()) + '</p>' + evidenceHtml(res) + '<div id="an-bt"></div>' + methodHtml() + '</details></section>' +
     '<p class="an-disc">Nội dung giáo dục, không phải lời khuyên đầu tư. Đối chiếu biểu đồ broker trước khi vào lệnh.</p>';
@@ -558,7 +564,7 @@
     liveStatus();
     const e = $('#an-live'); if (!e) return; if (!LV.on) { e.className = 'an-live'; e.innerHTML = ''; return; }
     const ok = LV.lastMsg && Date.now() - LV.lastMsg < 15000;
-    e.className = 'an-live' + (ok ? ' on ' + (LV.dir > 0 ? 'up' : LV.dir < 0 ? 'dn' : '') : ''); e.innerHTML = '<i></i>' + (ok ? 'Trực tiếp' + (onMt5() ? ' · MT5' : onDeriv() ? ' · Deriv' : '') + ' · <b>' + f2(LV.price + LV.off) + '</b>' : 'Đang kết nối giá trực tiếp…');
+    e.className = 'an-live' + (ok ? ' on ' + (LV.dir > 0 ? 'up' : LV.dir < 0 ? 'dn' : '') : ''); e.innerHTML = '<i></i>' + (ok ? 'Trực tiếp' + (onMt5() ? ' · MT5' : onDeriv() ? ' · Deriv' : onCb() ? ' · Coinbase' : '') + ' · <b>' + f2(LV.price + LV.off) + '</b>' : 'Đang kết nối giá trực tiếp…');
     orderUi();
   }
   /* mức nên nhập vào MT5, tính theo chênh mua/bán đang có (giống trang trực tiếp) */
@@ -586,6 +592,11 @@
     const NAME = { m5: '5m', m15: '15m', h1: '1h', h4: '4h' }, since = Date.now();
     LV.ds = ICT.deriv.stream(SYM.dsym, Object.keys(NAME), (k, b, x) => { if (x && b.t + TFMS[k] < since) return; onKline({ i: NAME[k], t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, x }); });
   }
+  /* BTC: nến đang chạy dựng từ từng lệnh khớp của Coinbase */
+  function liveCb() {
+    const NAME = { m5: '5m', m15: '15m', h1: '1h', h4: '4h' }, since = Date.now();
+    LV.ds = ICT.coinbase.stream(SYM.cb, Object.keys(NAME), (k, b, x) => { if (x && b.t + TFMS[k] < since) return; onKline({ i: NAME[k], t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, x }); });
+  }
   function livePoll() {
     Promise.all(['5m', '15m', '1h', '4h'].map((iv) => getJSON('/api/v3/klines?symbol=' + SYM.bn + '&interval=' + iv + '&limit=2').then((k) => k.forEach((x, j) => onKline({ i: iv, t: x[0], o: x[1], h: x[2], l: x[3], c: x[4], x: j < k.length - 1 }))))).catch(() => { /* thử lại ở lần sau */ });
   }
@@ -597,7 +608,7 @@
     LV.ws = ws; ws.onmessage = (m) => { try { const d = JSON.parse(m.data).data; if (d && d.k) onKline(d.k); } catch (e) { /* bỏ qua gói lỗi */ } };
     ws.onopen = () => { LV.retry = 0; if (LV.poll) { clearInterval(LV.poll); LV.poll = null; } }; ws.onclose = lost; ws.onerror = lost;
   }
-  function liveStart() { if (LV.on) return; LV.on = true; if (onMt5()) liveMt5(); else if (onDeriv()) liveDeriv(); else liveConnect(); LV.watch = setInterval(liveUi, 1000); document.addEventListener('visibilitychange', LV.vis = () => { if (!document.hidden) { Object.keys(LV.last).forEach((k) => applyRec(k, LV.last[k])); if (LV.stale && cfgGet().auto !== false && !ASOF && VIEW && !running) run(VIEW, true, undefined, true); } }); }
+  function liveStart() { if (LV.on) return; LV.on = true; if (onMt5()) liveMt5(); else if (onDeriv()) liveDeriv(); else if (onCb()) liveCb(); else liveConnect(); LV.watch = setInterval(liveUi, 1000); document.addEventListener('visibilitychange', LV.vis = () => { if (!document.hidden) { Object.keys(LV.last).forEach((k) => applyRec(k, LV.last[k])); if (LV.stale && cfgGet().auto !== false && !ASOF && VIEW && !running) run(VIEW, true, undefined, true); } }); }
   function liveStop() { if (!LV.on) return; LV.on = false; if (LV.ds) { LV.ds.close(); LV.ds = null; } const w = LV.ws; LV.ws = null; try { if (w) w.close(); } catch (e) { /* bỏ qua */ } clearInterval(LV.watch); clearInterval(LV.poll); LV.poll = null; document.removeEventListener('visibilitychange', LV.vis); LV.price = null; LV.spread = null; liveUi(); }
 
   /* ---------- sổ tín hiệu: giữ Entry/SL/TP đúng lúc tín hiệu xuất hiện, cùng cách làm với trang trực tiếp ---------- */
@@ -642,7 +653,7 @@
     try {
       const cfg = cfgGet(); setStatus('Đang tải nến 15m, 1H, 4H…', ''); if (!keep) out.innerHTML = '<div class="an-wait">Đang tải dữ liệu và phân tích…</div>';
       if (force || !RAW || RAW.sym !== SYM.id || Date.now() - RAW.at > 20000) {
-        let raw = null; const backup = !!RAW && ((A.SYMS[SYM.id].feed === 'deriv' && RAW.feed === 'binance') || (local() && RAW.feed !== 'mt5')); // đang dùng giá dự phòng: tải lại đầy đủ để thử nguồn chính
+        let raw = null; const backup = !!RAW && ((!!A.SYMS[SYM.id].feed && RAW.feed === 'binance') || (local() && RAW.feed !== 'mt5')); // đang dùng giá dự phòng: tải lại đầy đủ để thử nguồn chính
         if (RAW && RAW.sym === SYM.id && !backup) { try { raw = await refreshRaw(RAW); } catch (e) { raw = null; } }
         if (!raw) raw = await loadAll();
         if (raw.sym !== SYM.id) return;

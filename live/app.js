@@ -1,5 +1,5 @@
 /* ICT Live — trang phân tích và gợi ý lệnh độ trễ thấp.
-   Giá: vàng từ Deriv (cập nhật khoảng mỗi giây, dự phòng PAXG trên Binance), BTC từng khớp lệnh từ Binance.
+   Giá: vàng từ Deriv (cập nhật khoảng mỗi giây, dự phòng PAXG trên Binance), BTC từng lệnh khớp từ Coinbase (dự phòng Binance).
    Chạy trên máy (local/mt5_server.py): cả hai mã lấy từ MetaTrader 5, đúng giá sàn của bạn. Phân tích: chạy ngay khi nến 15m đóng, dùng chính dữ liệu WebSocket (không tải lại).
    "Đang hình thành": chạy thử lõi với cây nến chưa đóng để thấy trước, chưa phải tín hiệu. Lõi và quy tắc giữ nguyên (assets/analyst-core.js). */
 (function () {
@@ -36,13 +36,14 @@
   async function fetchTf(S, key, limit) {
     if (S.cfg.feed === 'mt5') { const r = await ICT.mt5.fetch(S.id, { [key]: limit }); return { closed: r[key], open: r.open[key] }; }
     if (S.cfg.feed === 'deriv') { const r = await ICT.deriv.fetch(S.cfg.dsym, { [key]: limit }); return { closed: r[key], open: r.open[key] }; }
+    if (S.cfg.feed === 'coinbase') { const r = await ICT.coinbase.fetch(S.cfg.cb, { [key]: limit }); return { closed: r[key], open: r.open[key] }; }
     const k = (await getJSON('/api/v3/klines?symbol=' + S.cfg.bn + '&interval=' + TF[key][0] + '&limit=' + limit)).map(bar), t = now();
     const closed = k.filter((x) => x.t + TF[key][1] <= t), open = k[k.length - 1];
     return { closed, open: open && open.t + TF[key][1] > t ? open : null };
   }
   async function load(S) {
     let parts;
-    const src = S.cfg.feed === 'mt5' ? () => ICT.mt5.fetch(S.id, LOAD) : S.cfg.feed === 'deriv' ? () => ICT.deriv.fetch(S.cfg.dsym, LOAD) : null;
+    const src = S.cfg.feed === 'mt5' ? () => ICT.mt5.fetch(S.id, LOAD) : S.cfg.feed === 'deriv' ? () => ICT.deriv.fetch(S.cfg.dsym, LOAD) : S.cfg.feed === 'coinbase' ? () => ICT.coinbase.fetch(S.cfg.cb, LOAD) : null;
     if (src) { const r = await src(); if (r.m15.length < 400) throw new Error('ít nến'); parts = Object.keys(TF).map((k) => ({ closed: r[k], open: r.open[k] })); }
     else parts = await Promise.all(Object.keys(TF).map((k) => fetchTf(S, k, TF[k][2])));
     const [a, b, c] = parts;
@@ -142,6 +143,13 @@
     const S = IDS.map((id) => SY[id]).find((x) => x.cfg.feed === 'deriv'); if (!S) return;
     DS = ICT.deriv.stream(S.cfg.dsym, Object.keys(TF), (k, x, done) => feedBar(S, k, x, done), (up) => { if (up) resync(S); });
   }
+  /* BTC: một luồng riêng từ Coinbase, mỗi lệnh khớp cập nhật ngay */
+  let CS = null;
+  function connectCb() {
+    const S = IDS.map((id) => SY[id]).find((x) => x.cfg.feed === 'coinbase'); if (!S) return;
+    CS = ICT.coinbase.stream(S.cfg.cb, Object.keys(TF), (k, x, done) => feedBar(S, k, x, done), (up) => { if (up) resync(S); },
+      (price, t) => { const lag = now() - t; if (lag > -2000 && lag < 10000) S.lag = S.lag == null ? lag : S.lag * 0.9 + lag * 0.1; });
+  }
   function connect() {
     const streams = []; IDS.filter((id) => !SY[id].cfg.feed).forEach((id) => { const b = SY[id].cfg.bn.toLowerCase(); streams.push(b + '@aggTrade', b + '@kline_15m', b + '@kline_1h', b + '@kline_4h'); });
     if (!streams.length) return;
@@ -236,7 +244,8 @@
     const bad = !['ICT', 'PA'].some((m) => { const t = (A.CORE_TESTS[S.id] || {})[m]; return t && t.ok && !(t.dv && t.dv[2] <= 0); });
     const ctx = B ? '4H ' + (B.t4.dir > 0 ? '▲' : B.t4.dir < 0 ? '▼' : '–') + ' · 1H ' + (B.t1.dir > 0 ? '▲' : B.t1.dir < 0 ? '▼' : '–') + ' · giá ' + Math.round(B.loc * 100) + '% range' + (B.t4.dir && B.t1.dir && B.t4.dir !== B.t1.dir ? ' · <span class="wn">ngược hướng, độ tin cậy thấp</span>' : '') : '';
     const next = news.next[0], nx = next && next.mins <= 720 ? ' · 🗓 ' + esc(next.label) + ' ' + vn(next.t) : '';
-    const src = (S.noMt ? '<p class="lv-sub wn">Không đọc được giá MT5: đang dùng giá web. Mở MT5, đăng nhập rồi tải lại trang.</p>' : '') + (S.backup ? '<p class="lv-sub wn">Không truy cập được Deriv: đang dùng giá dự phòng PAXG. Tải lại trang để thử lại.</p>' : '');
+    const bk = S.cfg.cb ? 'Không truy cập được Coinbase: đang dùng giá dự phòng Binance BTC/USDT (cao hơn BTC/USD vài chục USD).' : 'Không truy cập được Deriv: đang dùng giá dự phòng PAXG.';
+    const src = (S.noMt ? '<p class="lv-sub wn">Không đọc được giá MT5: đang dùng giá web. Mở MT5, đăng nhập rồi tải lại trang.</p>' : '') + (S.backup ? '<p class="lv-sub wn">' + bk + ' Tải lại trang để thử lại.</p>' : '');
     return '<section class="lv-v v-' + cls + '"><div class="lv-vh">' + head + '</div>' + src + '<p>' + tip + '</p><p class="lv-sub">' + ctx + nx + (calOk ? '' : ' · lịch tin dựng sẵn') + '</p>' + (['ICT', 'PA'].every((m) => (onBroker(S, m) || [0, 0, 1])[2] <= 0) ? '<p class="lv-sub wn">Đo trên giá MT5 này nhiều năm, sau chênh mua/bán: ICT và Price Action đều lỗ. Chỉ để quan sát.</p>' : bad ? '<p class="lv-sub wn">ICT và Price Action lỗ trong kiểm chứng ' + S.id + ': chỉ để quan sát.</p>' : '') + '</section>';
   }
   const cache = {};
@@ -277,10 +286,10 @@
   function tick() {
     const t = now(), left = M15 - (t % M15), cd = p2(Math.floor(left / 60000)) + ':' + p2(Math.floor((left % 60000) / 1000));
     $('#lv-cd').textContent = cd; $('#lv-bar').style.width = (100 - (left / M15) * 100) + '%'; [].forEach.call(document.querySelectorAll('[data-cd]'), (e) => (e.textContent = cd));
-    const S = SY[cur], mt = S.cfg.feed === 'mt5', alive = mt ? !!MS && MS.alive : S.cfg.feed === 'deriv' ? !!DS && DS.alive : WS.sock && WS.sock.readyState === 1 && Date.now() - WS.last < 5000, c = $('#lv-conn');
+    const S = SY[cur], mt = S.cfg.feed === 'mt5', alive = mt ? !!MS && MS.alive : S.cfg.feed === 'deriv' ? !!DS && DS.alive : S.cfg.feed === 'coinbase' ? !!CS && CS.alive : WS.sock && WS.sock.readyState === 1 && Date.now() - WS.last < 5000, c = $('#lv-conn');
     if (MS && MS.dead) { MS.close(); connectMt5(); }
     c.className = alive ? 'on' : 'off';
-    c.textContent = !alive ? (mt ? 'Mất giá MT5: xem phần mềm MT5 và cửa sổ chương trình' : 'Đang kết nối lại…') : mt ? 'Trực tiếp · MT5 ' + S.cfg.msym + (S.spread != null ? ' · chênh mua/bán ' + gap(S, S.spread) : '') + (S.lag != null ? ' · trễ ~' + ms(Math.max(0, S.lag)) : '') : S.cfg.feed === 'deriv' ? 'Trực tiếp · Deriv' : 'Trực tiếp · Binance' + (WS.lag != null ? ' · giá trễ ~' + ms(Math.max(0, WS.lag)) : '');
+    c.textContent = !alive ? (mt ? 'Mất giá MT5: xem phần mềm MT5 và cửa sổ chương trình' : 'Đang kết nối lại…') : mt ? 'Trực tiếp · MT5 ' + S.cfg.msym + (S.spread != null ? ' · chênh mua/bán ' + gap(S, S.spread) : '') + (S.lag != null ? ' · trễ ~' + ms(Math.max(0, S.lag)) : '') : S.cfg.feed === 'deriv' ? 'Trực tiếp · Deriv' : S.cfg.feed === 'coinbase' ? 'Trực tiếp · Coinbase' + (S.lag != null ? ' · giá trễ ~' + ms(Math.max(0, S.lag)) : '') : 'Trực tiếp · Binance' + (WS.lag != null ? ' · giá trễ ~' + ms(Math.max(0, WS.lag)) : '');
     $('#lv-perf').textContent = S.after != null ? 'Nến gần nhất: có kết quả sau ' + ms(S.after) + ' kể từ lúc đóng (tính ' + ms(S.calc) + ')' : S.calc != null ? 'Phân tích mỗi lượt mất ' + ms(S.calc) : '';
     if (WS.sock && Date.now() - WS.last > 10000) drop();
     IDS.forEach((id) => { const q = SY[id]; if (!q.ready) return; const exp = Math.floor(t / M15) * M15; if (exp > q.doneB && t - exp > 4000 && !q.wait && !q.syncing && Date.now() - (q.syncAt || 0) > 5000) { q.syncAt = Date.now(); resync(q); } preview(q); });
@@ -300,7 +309,7 @@
     $('#lv-awake').onclick = async () => {
       const b = $('#lv-awake'); try { if (lock) { await lock.release(); lock = null; } else { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; b.classList.remove('on'); }); } b.classList.toggle('on', !!lock); } catch (e) { b.textContent = 'Máy không hỗ trợ giữ sáng'; }
     };
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (Date.now() - WS.last > 4000) drop(); if (DS && !DS.alive) { DS.close(); connectDeriv(); } if (MS && !MS.alive) { MS.close(); connectMt5(); } IDS.forEach((id) => resync(SY[id])); } });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (Date.now() - WS.last > 4000) drop(); if (DS && !DS.alive) { DS.close(); connectDeriv(); } if (MS && !MS.alive) { MS.close(); connectMt5(); } if (CS && !CS.alive) { CS.close(); connectCb(); } IDS.forEach((id) => resync(SY[id])); } });
     if (navigator.serviceWorker && !ICT.mt5.local()) navigator.serviceWorker.register('../sw.js').catch(() => {});
     setInterval(tick, 250);
     const t0 = performance.now();
@@ -312,9 +321,9 @@
     }
     await Promise.all(IDS.map(async (id) => {
       const S = SY[id];
-      for (let n = 0; ; n++) { try { await load(S); break; } catch (e) { S.error = 'Không tải được dữ liệu, đang thử lại…'; if (S.cfg.feed === 'mt5' && n >= 2) { S.cfg = A.SYMS[id]; S.noMt = true; n = -1; } else if (S.cfg.feed === 'deriv' && n >= 1) { S.cfg = Object.assign({}, S.cfg, { feed: null }); S.backup = true; } else await new Promise((r) => setTimeout(r, 2000)); } }
+      for (let n = 0; ; n++) { try { await load(S); break; } catch (e) { S.error = 'Không tải được dữ liệu, đang thử lại…'; if (S.cfg.feed === 'mt5' && n >= 2) { S.cfg = A.SYMS[id]; S.noMt = true; n = -1; } else if ((S.cfg.feed === 'deriv' || S.cfg.feed === 'coinbase') && n >= 1) { S.cfg = Object.assign({}, S.cfg, { feed: null }); S.backup = true; } else await new Promise((r) => setTimeout(r, 2000)); } }
     }));
-    connect(); connectDeriv(); connectMt5(); spot();
+    connect(); connectDeriv(); connectCb(); connectMt5(); spot();
     for (const id of [cur].concat(IDS.filter((x) => x !== cur))) { const S = SY[id]; await replay(S); S.ready = true; S.error = null; render(true); console.log(id, 'sẵn sàng sau', Math.round(performance.now() - t0), 'ms'); }
     IDS.forEach((id) => resync(SY[id]));
     setInterval(loadCal, 600000); setInterval(spot, 120000); setInterval(syncClock, 600000);

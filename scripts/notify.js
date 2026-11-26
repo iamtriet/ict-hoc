@@ -12,15 +12,15 @@ const MIN = +env.MIN_SCORE || 55, SITE = env.SITE_URL || 'https://iamtriet.githu
 const STATE = path.join(ROOT, '.state', 'state.json');
 
 /* ---- nạp lõi phân tích ---- */
-const win = { setTimeout, clearTimeout, setInterval, clearInterval, WebSocket: typeof WebSocket !== 'undefined' ? WebSocket : undefined }; win.window = win; win.console = console; vm.createContext(win);
-['assets/engine.js', 'assets/deriv.js', 'assets/analyst-core.js', 'assets/analyst-models.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
+const win = { setTimeout, clearTimeout, setInterval, clearInterval, fetch, AbortController, WebSocket: typeof WebSocket !== 'undefined' ? WebSocket : undefined }; win.window = win; win.console = console; vm.createContext(win);
+['assets/engine.js', 'assets/deriv.js', 'assets/coinbase.js', 'assets/analyst-core.js', 'assets/analyst-models.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
 const A = win.ICT.analyst, msg = require('./message.js')(A);
 const SYMBOLS = (env.SYMBOLS || 'XAUUSD,BTCUSD').split(/[\s,]+/).map((x) => x.toUpperCase()).filter((x) => A.SYMS[x]);
 if (!SYMBOLS.length) SYMBOLS.push('XAUUSD');
 let f2 = (x) => (+x).toFixed(2); // số lẻ đổi theo mã đang xử lý
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
-/* ---- dữ liệu: vàng lấy từ Deriv (dự phòng PAXG trên Binance → Kraken); BTC từ Binance (vision) → Binance → Kraken ---- */
+/* ---- dữ liệu: vàng lấy từ Deriv (dự phòng PAXG trên Binance → Kraken); BTC từ Coinbase (dự phòng Binance → Kraken) ---- */
 async function getJSON(url) { const r = await fetch(url, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error(url.split('/')[2] + ' HTTP ' + r.status); return r.json(); }
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const TFMS = { '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000 };
@@ -44,8 +44,16 @@ async function deriv(cfg) {
   for (let i = 0; i < 4; i++) { const last = r.m15[r.m15.length - 1]; if (r.open.m15 || !last || Date.now() - (last.t + 900000) > 120000) break; await pause(2000); r = await win.ICT.deriv.fetch(cfg.dsym, spec); }
   return { m15: r.m15, h1: r.h1, h4: r.h4, m5: r.m5, src: 'Deriv', feed: 'deriv' };
 }
+const useCb = (cfg) => cfg.feed === 'coinbase' && env.BTC_FEED !== 'binance' && env.SOURCE !== 'kraken';
+async function coinbase(cfg) {
+  const spec = { m15: 999, h1: 999, h4: 499, m5: 999 }; let r = await win.ICT.coinbase.fetch(cfg.cb, spec);
+  // quét ngay sau khi nến đóng: đợi nến kỳ mới xuất hiện (chắc rằng nến trước đã chốt), tối đa ~8 giây
+  for (let i = 0; i < 4; i++) { const last = r.m15[r.m15.length - 1]; if (r.open.m15 || !last || Date.now() - (last.t + 900000) > 120000) break; await pause(2000); r = await win.ICT.coinbase.fetch(cfg.cb, spec); }
+  return { m15: r.m15, h1: r.h1, h4: r.h4, m5: r.m5, src: 'Coinbase', feed: 'coinbase' };
+}
+const primaryOf = (cfg) => (useDeriv(cfg) ? { feed: 'deriv', name: 'Deriv', fetch: deriv } : useCb(cfg) ? { feed: 'coinbase', name: 'Coinbase', fetch: coinbase } : null);
 async function load(cfg) {
-  const tries = env.SOURCE === 'kraken' ? [() => kraken(cfg.kr)] : (useDeriv(cfg) ? [() => deriv(cfg), () => deriv(cfg)] : []).concat([() => binance('https://data-api.binance.vision', cfg.bn), () => binance('https://api.binance.com', cfg.bn)], cfg.kr ? [() => kraken(cfg.kr)] : []); let err;
+  const tries = env.SOURCE === 'kraken' ? [() => kraken(cfg.kr)] : (primaryOf(cfg) ? [() => primaryOf(cfg).fetch(cfg), () => primaryOf(cfg).fetch(cfg)] : []).concat([() => binance('https://data-api.binance.vision', cfg.bn), () => binance('https://api.binance.com', cfg.bn)], cfg.kr ? [() => kraken(cfg.kr)] : []); let err;
   for (const t of tries) { try { const d = await t(); if (d.m15.length >= 400 && d.h1.length >= 100 && d.h4.length >= 60) return d; err = new Error('Dữ liệu quá ít từ ' + d.src); } catch (e) { err = e; console.log('Nguồn lỗi:', e.message); } }
   throw err;
 }
@@ -59,6 +67,7 @@ async function offsetOf(last) {
 /* giá đang giao dịch lúc gửi tin (đã quy đổi như dữ liệu nến); không lấy được thì dùng giá đóng cửa nến cuối */
 async function liveOf(cfg, off, fallback, feed) {
   if (env.ASOF) return fallback;
+  if (feed === 'coinbase') { try { return await win.ICT.coinbase.price(cfg.cb); } catch (e) { return fallback; } }
   if (feed === 'deriv') { try { const r = await win.ICT.deriv.fetch(cfg.dsym, { m5: 2 }), x = r.open.m5 || r.m5[r.m5.length - 1]; return x ? x.c : fallback; } catch (e) { return fallback; } }
   try { const j = await getJSON('https://data-api.binance.vision/api/v3/ticker/price?symbol=' + cfg.bn); return +j.price > 0 ? +j.price + off : fallback; } catch (e) { return fallback; }
 }
@@ -171,8 +180,9 @@ async function scan(id, st) {
   console.log('[' + id + '] nguồn dữ liệu:', d.src, '· 15m', d.m15.length, '· 1H', d.h1.length, '· 4H', d.h4.length);
   if (env.ASOF) { const T = +env.ASOF, cut = (a, ms) => a.filter((x) => x.t + ms <= T); d.m15 = cut(d.m15, 900000); d.h1 = cut(d.h1, 3600000); d.h4 = cut(d.h4, 14400000); d.m5 = cut(d.m5 || [], 300000); console.log('Chế độ thử: dữ liệu cắt tại', new Date(T).toISOString()); }
   // vàng: báo một lần khi phải dùng giá dự phòng, và khi lấy lại được Deriv
-  const backup = useDeriv(cfg) && d.feed !== 'deriv', srcName = d.feed === 'deriv' ? cfg.src : id === 'XAUUSD' ? 'PAXG (dự phòng)' : cfg.src;
-  if (backup && !st.backup) { st.backup = true; await say('⚠️ <b>Không lấy được giá Deriv</b>, tạm dùng giá PAXG quy đổi cho vàng'); } else if (!backup && useDeriv(cfg) && st.backup) { st.backup = false; await say('✅ <b>Đã lấy lại giá Deriv</b>'); }
+  const main = primaryOf(cfg), backup = !!main && d.feed !== main.feed, instead = id === 'XAUUSD' ? 'PAXG (dự phòng)' : 'Binance BTC/USDT (dự phòng)', srcName = !main || !backup ? cfg.src : instead;
+  const flag = id === 'XAUUSD' ? 'backup' : 'backup' + id; // mỗi mã một cờ để chỉ báo một lần khi đổi nguồn
+  if (backup && !st[flag]) { st[flag] = true; await say('⚠️ <b>Không lấy được giá ' + main.name + '</b>, tạm dùng ' + (id === 'XAUUSD' ? 'giá PAXG quy đổi cho vàng' : 'giá Binance BTC/USDT cho Bitcoin (cao hơn BTC/USD vài chục USD)')); } else if (!backup && main && st[flag]) { st[flag] = false; await say('✅ <b>Đã lấy lại giá ' + main.name + '</b>'); }
   const off = id === 'XAUUSD' && d.feed !== 'deriv' ? await offsetOf(d.m15[d.m15.length - 1].c) : 0, sh = (a) => (off ? a.map((x) => ({ t: x.t, o: x.o + off, h: x.h + off, l: x.l + off, c: x.c + off })) : a);
   const F = { m15: sh(d.m15), h1: sh(d.h1), h4: sh(d.h4) }, res = A.analyze(F, { mode: env.MODE || cfg.mode || 'both', minScore: MIN, sym: id, events: EV, at: env.ASOF ? +env.ASOF : Date.now(), news: env.NEWS !== 'off' });
   const job = (s, label) => ({ id, cfg, res, s, label, srcName, F: Object.assign({ m5: sh(d.m5 || []) }, F), opt: { mode: env.MODE || cfg.mode || 'both', minScore: MIN, sym: id, news: false } });
@@ -180,7 +190,7 @@ async function scan(id, st) {
   const ageMin = (Date.now() - res.now) / 60000; console.log('Nến 15m cuối đóng lúc', A.tm(res.now - 900000), '· cách đây', Math.round(ageMin), 'phút · chênh lệch giá', off);
   console.log('Bias:', res.bias ? res.bias.text : '–', '· setup:', res.setups.length, '· ghi chú:', res.notes.filter(Boolean).join(' | '));
   if (res.held && res.held.length) console.log('[' + id + '] giữ lại ' + res.held.length + ' setup vì đang quanh giờ tin mạnh: ' + res.held.map((x) => x.dir + ' ' + x.score).join(', '));
-  const out = { id, note: backup ? 'giá dự phòng PAXG' : '', price: res.price, dir: res.bias ? res.bias.dir : 0, ageMin, setups: res.setups.length, src: d.src, dec: cfg.dec };
+  const out = { id, note: backup ? 'giá dự phòng ' + (id === 'XAUUSD' ? 'PAXG' : 'Binance') : '', price: res.price, dir: res.bias ? res.bias.dir : 0, ageMin, setups: res.setups.length, src: d.src, dec: cfg.dec };
   if (TEST || REQ) { const label = 'ẢNH THỬ: setup đang theo dõi hoặc đã qua, không phải tín hiệu mới', demo = res.setups[0] || res.recent[0];
     if (demo) out.sample = job(demo, label); else { const base = job(null, label), p = pastDemo(base.F, base.opt); if (p) out.sample = Object.assign(base, { res: p.res, s: p.s, F: p.F }); } }
   if (ageMin > 45 && !FORCE) { console.log('Dữ liệu cũ hơn 45 phút (thị trường nghỉ hoặc nguồn chậm): bỏ qua.'); return out; }
@@ -194,7 +204,7 @@ async function scan(id, st) {
     const live = await liveOf(cfg, off, res.price, d.feed);
     // quy tắc hủy: giá đã chạm TP1 mà chưa khớp thì lệnh không còn giá trị, không gửi
     if (s.model === 'ICT' && msg.progress(s, live) >= 1 && !FORCE) { st.sent[key] = Date.now(); console.log('Bỏ qua', key, s.dir, s.score, ': giá', live, 'đã chạm TP1', s.tp1, 'trước khi khớp'); continue; }
-    const text = msg.setup(s, { cfg, res, events: EV, site: SITE, live, note: backup ? 'Đang dùng giá dự phòng PAXG, không phải Deriv' : '' }); // một tin duy nhất: chú thích đi cùng album ảnh
+    const text = msg.setup(s, { cfg, res, events: EV, site: SITE, live, note: backup ? 'Đang dùng giá dự phòng ' + instead.replace(' (dự phòng)', '') + ', không phải ' + main.name : '' }); // một tin duy nhất: chú thích đi cùng album ảnh
     if (DRY) console.log('\n' + msg.plain(text));
     await sendImages(job(s), text);
     st.sent[key] = Date.now(); sent++; console.log('Đã xử lý', key, s.dir, s.score);

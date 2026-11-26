@@ -1,4 +1,4 @@
-/* Vòng quét của bot: chạy scripts/notify.js ngay khi nến 15m đóng (nghe WebSocket Binance, trễ vài giây)
+/* Vòng quét của bot: chạy scripts/notify.js ngay khi nến 15m đóng (nghe giá trực tiếp của Deriv, Coinbase hoặc Binance; trễ vài giây)
    và thêm một lượt dự phòng mỗi 5 phút (phòng WebSocket đứt, và để theo dõi trạng thái setup đang chờ).
    Chạy trong LOOP_MIN phút (mặc định 340) rồi thoát; workflow tự gọi lại chính nó. */
 'use strict';
@@ -8,14 +8,15 @@ const ROOT = path.join(__dirname, '..'), env = process.env;
 const LOOP_MIN = +env.LOOP_MIN || 340, END = Date.now() + LOOP_MIN * 60000, EVERY = 5 * 60000;
 
 // danh sách mã lấy từ cùng cấu hình với notify.js
-const win = { console, setTimeout, clearTimeout, setInterval, clearInterval, WebSocket: typeof WebSocket !== 'undefined' ? WebSocket : undefined }; win.window = win; vm.createContext(win);
-['assets/engine.js', 'assets/deriv.js', 'assets/analyst-core.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
+const win = { console, setTimeout, clearTimeout, setInterval, clearInterval, fetch, AbortController, WebSocket: typeof WebSocket !== 'undefined' ? WebSocket : undefined }; win.window = win; vm.createContext(win);
+['assets/engine.js', 'assets/deriv.js', 'assets/coinbase.js', 'assets/analyst-core.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
 const SYMS = win.ICT.analyst.SYMS, list = (env.SYMBOLS || 'XAUUSD,BTCUSD').split(/[\s,]+/).map((x) => x.toUpperCase()).filter((x) => SYMS[x]);
 if (!list.length) list.push('XAUUSD');
 const viaDeriv = list.filter((id) => SYMS[id].feed === 'deriv' && env.GOLD_FEED !== 'paxg');
-const streams = list.filter((id) => viaDeriv.indexOf(id) < 0).map((id) => SYMS[id].bn.toLowerCase() + '@kline_15m');
+const viaCb = list.filter((id) => SYMS[id].feed === 'coinbase' && env.BTC_FEED !== 'binance');
+const streams = list.filter((id) => viaDeriv.indexOf(id) < 0 && viaCb.indexOf(id) < 0).map((id) => SYMS[id].bn.toLowerCase() + '@kline_15m');
 const started = Date.now(); const due = (why) => { console.log(ts() + ' ' + why); clearTimeout(timer); timer = setTimeout(() => scan(why), 1500); };
-let dstream = null;
+let dstream = null, cstream = null;
 
 const ts = () => new Date().toISOString().slice(11, 19) + ' UTC';
 let n = 0, running = false, queued = null, lastEnd = Date.now(), timer = null, ws = null, retry = 0, msgs = 0, stopping = false;
@@ -33,6 +34,12 @@ function scan(why) {
 function connectDeriv() {
   if (!viaDeriv.length || typeof WebSocket === 'undefined') return;
   dstream = win.ICT.deriv.stream(SYMS[viaDeriv[0]].dsym, ['m15'], (k, b, closed) => { msgs++; if (closed && b.t + 900000 > started) due('nến 15m vàng (Deriv) đóng'); }, (up) => console.log(up ? 'Deriv đã kết nối' : 'Deriv ngắt, đang nối lại'));
+}
+
+/* BTC: nghe lệnh khớp của Coinbase, quét khi nến 15m đóng */
+function connectCb() {
+  if (!viaCb.length || typeof WebSocket === 'undefined') return;
+  cstream = win.ICT.coinbase.stream(SYMS[viaCb[0]].cb, ['m15'], (k, b, closed) => { msgs++; if (closed && b.t + 900000 > started) due('nến 15m BTC (Coinbase) đóng'); }, (up) => console.log(up ? 'Coinbase đã kết nối' : 'Coinbase ngắt, đang nối lại'));
 }
 
 function connect() {
@@ -53,9 +60,9 @@ function connect() {
   sock.onclose = () => lost('đóng'); sock.onerror = () => lost('lỗi');
 }
 
-function finish() { stopping = true; clearTimeout(timer); if (dstream) dstream.close(); try { if (ws) ws.close(); } catch (e) { /* bỏ qua */ } const w = setInterval(() => { if (!running) { clearInterval(w); console.log('Kết thúc vòng quét sau ' + n + ' lượt (' + msgs + ' gói WebSocket).'); process.exit(0); } }, 500); }
+function finish() { stopping = true; clearTimeout(timer); if (dstream) dstream.close(); if (cstream) cstream.close(); try { if (ws) ws.close(); } catch (e) { /* bỏ qua */ } const w = setInterval(() => { if (!running) { clearInterval(w); console.log('Kết thúc vòng quét sau ' + n + ' lượt (' + msgs + ' gói WebSocket).'); process.exit(0); } }, 500); }
 
-scan('khởi động'); connect(); connectDeriv();
+scan('khởi động'); connect(); connectDeriv(); connectCb();
 const tick = setInterval(() => {
   if (Date.now() >= END) { clearInterval(tick); finish(); return; }
   if (!running && Date.now() - lastEnd >= EVERY) scan('dự phòng 5 phút');

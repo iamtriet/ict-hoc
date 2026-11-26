@@ -228,6 +228,11 @@
       const m = { l: 6, r: 64, t: 24, b: 26 }, rg = o.range ? (S.rmap ? S.rmap(o.range) : o.range) : [0, S.n];
       let x0, slots;
       if (o.win) { x0 = Math.max(0, vv - o.win); slots = o.win + 8; } else { x0 = rg[0]; slots = rg[1] - rg[0] + (o.pad == null ? 5 : o.pad); }
+      /* o.zoomText: cỡ chữ theo độ rộng mỗi cây nến (phóng to thì chữ to, thu nhỏ thì chữ nhỏ); 1 = cỡ gốc ở 8 px một nến.
+         Màn hẹp giữ chữ không quá bé để còn đọc được */
+      const k = o.zoomText ? clamp(Math.sqrt((W - m.l - m.r) / slots / 8), typeof innerWidth === 'number' && innerWidth < 600 ? 0.85 : 0.72, 1.3) : 1; // chỉ điện thoại mới giữ sàn cao
+      m.r = Math.round(m.r * Math.max(1, k)); // nhãn giá bên phải to ra thì chừa thêm lề
+      if (svg.style && svg.style.setProperty) svg.style.setProperty('--k', k.toFixed(3));
       const plotW = Math.max(W - m.l - m.r, slots * o.slotMin), slot = plotW / slots, Wt = plotW + m.l + m.r;
       const i1 = Math.min(vv, o.range ? rg[1] : S.n), H = o.h || clamp(Math.round(W * 0.56), 270, 460), plotH = H - m.t - m.b, right = m.l + plotW;
       let hi = -1e9, lo = 1e9;
@@ -243,7 +248,7 @@
       const base = m.t + plotH, off = (ya, yb) => !!o.clip && (Math.max(ya, yb) < m.t || Math.min(ya, yb) > base), cy = (y) => (o.clip ? clamp(y, m.t, base) : y);
       const gone = (a) => !!o.clip && (S.X(a.x1 == null ? 0 : a.x1, 0) > i1 - 1 || (a.x2 != null && a.x2 !== 'end' && S.X(a.x2, 2) < x0));
       // vùng bị mép khung cắt mà phần còn thấy không chứa nổi nhãn: bỏ nhãn, tránh nhãn trôi ra mép
-      const stub = (cutX, cutY, w, h, text) => !!o.clip && ((cutX && w < text.length * 5.5 + 4) || (cutY && h < 12)); // chỉ xét chiều bị cắt
+      const stub = (cutX, cutY, w, h, text) => !!o.clip && ((cutX && w < (text.length * 5.5 + 4) * k) || (cutY && h < 12 * k)); // chỉ xét chiều bị cắt
 
       /* --- bộ tránh chồng: nến + nhãn đã đặt --- */
       const occC = []; for (let i = x0; i < i1; i++) { const b = S.bars[i], cx = px(i); occC.push({ x1: cx - bw / 2 - 1.5, x2: cx + bw / 2 + 1.5, y1: py(b.h) - 1.5, y2: py(b.l) + 1.5 }); }
@@ -254,7 +259,7 @@
         for (let k = 0; k < occL.length; k++) { const q = occL[k]; if (r.x1 < q.x2 + 2 && r.x2 > q.x1 - 2 && r.y1 < q.y2 + 1 && r.y2 > q.y1 - 1) return true; }
         return false;
       };
-      const req = (o2) => { o2.pri = o2.pri == null ? 1 : o2.pri; o2.w = o2.text.length * (CW[o2.tc || 'tx'] || 6.1) + (o2.kind === 'pill' ? 12 : 4); o2.h = o2.kind === 'pill' ? 17 : (o2.tc === 'tx sm' || o2.tc === 'sw' ? 12 : 14); reqs.push(o2); };
+      const req = (o2) => { o2.pri = o2.pri == null ? 1 : o2.pri; o2.w = (o2.text.length * (CW[o2.tc || 'tx'] || 6.1) + (o2.kind === 'pill' ? 12 : 4)) * k; o2.h = (o2.kind === 'pill' ? 17 : (o2.tc === 'tx sm' || o2.tc === 'sw' ? 12 : 14)) * k; reqs.push(o2); };
       function place(q) {
         const w = q.w, h = q.h, cands = [];
         if (q.box) { // nhãn nằm giữa vùng; nếu vướng nến/nhãn khác thì trượt ngang trong vùng, gần tâm nhất
@@ -311,8 +316,8 @@
 
       let s = '<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="mk"/></marker></defs>';
       const st = nice(hi - lo, 6);
-      for (let p = Math.ceil(lo / st) * st; p < hi; p += st) { const y = py(p); s += '<line class="gr" x1="' + m.l + '" x2="' + right + '" y1="' + y + '" y2="' + y + '"/><text class="ax" x="' + (right + 5) + '" y="' + (y + 3.5) + '">' + S.fmt(p) + '</text>'; }
-      const need = Math.ceil(64 / slot), lab = [];
+      for (let p = Math.ceil(lo / st) * st; p < hi; p += st) { const y = py(p); s += '<line class="gr" x1="' + m.l + '" x2="' + right + '" y1="' + y + '" y2="' + y + '"/><text class="ax" x="' + (right + 5) + '" y="' + (y + 3.5 * k) + '">' + S.fmt(p) + '</text>'; }
+      const need = Math.ceil((64 * k) / slot), lab = [];
       if (S.tf < 1440) {
         const steps = [5, 10, 15, 30, 60, 120, 180, 240, 360, 720], target = need * S.tf, step = steps.find((x) => x >= target && x % S.tf === 0) || 1440;
         for (let i = x0; i < i1; i++) if (S.time(i).m % step === 0) lab.push(i);
@@ -429,21 +434,21 @@
         if (q.tc === 'sw' && r.ovl) { occL.pop(); return; } // nhãn swing phụ: hết chỗ thì bỏ, không đè lên nhãn khác
         if (q.kind === 'pill') {
           const below = r.y1 > q.ay, lx = clamp(q.ax, r.x1 + 4, r.x2 - 4), ly = below ? r.y1 : r.y2;
-          s += '<g class="' + q.g + '"><line class="ln" stroke-opacity=".55" x1="' + q.ax + '" y1="' + q.ay + '" x2="' + lx + '" y2="' + ly + '"/><rect class="pl" x="' + r.x1 + '" y="' + r.y1 + '" width="' + q.w + '" height="' + q.h + '" rx="3"/><text class="tx" x="' + (r.x1 + q.w / 2) + '" y="' + (r.y1 + 12) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
-        } else if (r.inn) s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl in" x="' + ((r.x1 + r.x2) / 2) + '" y="' + (r.y2 - 3) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
-        else s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl" x="' + (r.x1 + 2) + '" y="' + (r.y2 - 3) + '">' + esc(q.text) + '</text></g>';
+          s += '<g class="' + q.g + '"><line class="ln" stroke-opacity=".55" x1="' + q.ax + '" y1="' + q.ay + '" x2="' + lx + '" y2="' + ly + '"/><rect class="pl" x="' + r.x1 + '" y="' + r.y1 + '" width="' + q.w + '" height="' + q.h + '" rx="3"/><text class="tx" x="' + (r.x1 + q.w / 2) + '" y="' + (r.y1 + 12 * k) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
+        } else if (r.inn) s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl in" x="' + ((r.x1 + r.x2) / 2) + '" y="' + (r.y2 - 3 * k) + '" text-anchor="middle">' + esc(q.text) + '</text></g>';
+        else s += '<g class="' + q.g + '"><text class="' + (q.tc || 'tx') + ' hl" x="' + (r.x1 + 2) + '" y="' + (r.y2 - 3 * k) + '">' + esc(q.text) + '</text></g>';
       });
       if (o.pos) {
         const p = o.pos, xa = Math.min(px(p.i), right - 30), full = p.tp2 != null, tpTop = full ? p.tp2 : p.tp;
         const rect = (ya, yb, cls) => '<rect class="pbx ' + cls + '" x="' + xa + '" y="' + Math.min(py(ya), py(yb)) + '" width="' + (right - xa) + '" height="' + Math.abs(py(ya) - py(yb)) + '"/>';
-        const mk = (y, cls, t, price) => { const yy = py(y); return '<line class="ps ' + cls + '" x1="' + xa + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax ps-t ' + cls + 't" x="' + (right - 4) + '" y="' + (yy - 3) + '" text-anchor="end">' + t + '</text><rect class="ptag ' + cls + 'g" x="' + (right + 1) + '" y="' + (yy - 7) + '" width="' + (m.r - 3) + '" height="14" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5) + '" text-anchor="middle">' + S.fmt(price) + '</text>'; };
+        const mk = (y, cls, t, price) => { const yy = py(y); return '<line class="ps ' + cls + '" x1="' + xa + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax ps-t ' + cls + 't" x="' + (right - 4) + '" y="' + (yy - 3) + '" text-anchor="end">' + t + '</text><rect class="ptag ' + cls + 'g" x="' + (right + 1) + '" y="' + (yy - 7 * k) + '" width="' + (m.r - 3) + '" height="' + 14 * k + '" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5 * k) + '" text-anchor="middle">' + S.fmt(price) + '</text>'; };
         s += rect(p.entry, tpTop, 'tp') + rect(p.entry, p.sl, 'sl');
         s += mk(p.sl, 'psl', 'SL' + (p.rrSl ? ' ' + p.rrSl : ''), p.sl);
         if (full) s += mk(p.tp2, 'ptp', 'TP2' + (p.rr2 ? ' · 1:' + p.rr2 : ''), p.tp2) + mk(p.tp1, 'ptp', 'TP1' + (p.rr1 ? ' · 1:' + p.rr1 : ''), p.tp1);
         else s += mk(p.tp, 'ptp', 'TP', p.tp);
         s += mk(p.entry, 'pe', (p.dir === 1 ? 'BUY ' : 'SELL ') + S.fmt(p.entry), p.entry);
       }
-      if (o.lastLine && i1 > x0) { const lb = S.bars[i1 - 1], up = lb.c >= lb.o, yy = py(lb.c); s += '<line class="lpl ' + (up ? 'u' : 'd') + '" x1="' + m.l + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><rect class="lpg ' + (up ? 'u' : 'd') + '" x="' + (right + 1) + '" y="' + (yy - 7) + '" width="' + (m.r - 3) + '" height="14" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5) + '" text-anchor="middle">' + S.fmt(lb.c) + '</text>'; }
+      if (o.lastLine && i1 > x0) { const lb = S.bars[i1 - 1], up = lb.c >= lb.o, yy = py(lb.c); s += '<line class="lpl ' + (up ? 'u' : 'd') + '" x1="' + m.l + '" x2="' + right + '" y1="' + yy + '" y2="' + yy + '"/><rect class="lpg ' + (up ? 'u' : 'd') + '" x="' + (right + 1) + '" y="' + (yy - 7 * k) + '" width="' + (m.r - 3) + '" height="' + 14 * k + '" rx="2"/><text class="ptx" x="' + (right + 1 + (m.r - 3) / 2) + '" y="' + (yy + 3.5 * k) + '" text-anchor="middle">' + S.fmt(lb.c) + '</text>'; }
       (o.trades || []).forEach((t) => { if (t.i1 < x0) return; s += '<line class="trd ' + (t.R >= 0 ? 'w' : 'l') + '" x1="' + px(Math.max(t.i0, x0)) + '" y1="' + py(t.entry) + '" x2="' + px(t.i1) + '" y2="' + py(t.exit) + '"/><circle class="trd-dot ' + (t.R >= 0 ? 'w' : 'l') + '" cx="' + px(t.i1) + '" cy="' + py(t.exit) + '" r="3.5"/>'; });
       s += '<g class="xh" style="display:none"><line class="xl" y1="' + m.t + '" y2="' + (H - m.b) + '"/></g>';
       svg.setAttribute('width', Wt); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + Wt + ' ' + H);
