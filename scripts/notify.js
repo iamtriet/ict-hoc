@@ -71,7 +71,7 @@ function messages(s, cfg) {
 async function album(job) {
   if (env.SHOT === 'off') return null;
   try { const t = Date.now(), imgs = await shot({ sym: job.id, F: job.F, opt: job.opt, id: job.s.id, label: job.label }); console.log('Đã dựng ' + imgs.length + ' ảnh khung trong ' + (Date.now() - t) + ' ms'); return imgs; }
-  catch (e) { console.log('::warning::Không dựng được album ảnh (' + e.message + '), dùng ảnh 15m đơn giản'); return null; }
+  catch (e) { job.err = e.message; console.log('::warning::Không dựng được album ảnh (' + e.message + '), dùng ảnh 15m đơn giản'); return null; }
 }
 async function sendImages(job, cap) {
   const { id, F, s, res, cfg } = job, imgs = await album(job);
@@ -79,15 +79,46 @@ async function sendImages(job, cap) {
   if (imgs && imgs.length) {
     try {
       const fd = new FormData(); fd.append('chat_id', env.TG_CHAT_ID);
-      if (imgs.length === 1) { fd.append('caption', cap); fd.append('parse_mode', 'HTML'); fd.append('photo', new Blob([imgs[0].png], { type: 'image/png' }), id + '.png'); await tg('sendPhoto', fd, true); return; }
+      if (imgs.length === 1) { fd.append('caption', cap); fd.append('parse_mode', 'HTML'); fd.append('photo', new Blob([imgs[0].png], { type: 'image/png' }), id + '.png'); await tg('sendPhoto', fd, true); return { mode: 'album', note: '1 ảnh' }; }
       fd.append('media', JSON.stringify(imgs.map((x, i) => Object.assign({ type: 'photo', media: 'attach://p' + i }, i ? {} : { caption: cap, parse_mode: 'HTML' }))));
-      imgs.forEach((x, i) => fd.append('p' + i, new Blob([x.png], { type: 'image/png' }), id + '-' + x.key + '.png')); await tg('sendMediaGroup', fd, true); return;
-    } catch (e) { console.log('::warning::Gửi album ảnh không được (' + e.message + '), thử ảnh đơn'); }
+      imgs.forEach((x, i) => fd.append('p' + i, new Blob([x.png], { type: 'image/png' }), id + '-' + x.key + '.png')); await tg('sendMediaGroup', fd, true); return { mode: 'album', note: imgs.length + ' ảnh' };
+    } catch (e) { job.err = e.message; console.log('::warning::Gửi album ảnh không được (' + e.message + '), thử ảnh đơn'); }
   }
   const svg = chartSvg(F.m15, s, { bias: res.bias.text + ' · ' + res.bias.reasons[0], when: A.tm(res.now - 900000), name: cfg.name, dec: cfg.dec, unit: cfg.unit, foot: cfg.closes ? undefined : 'dữ liệu ' + cfg.src + ' (Binance)' }), img = await png(svg);
-  if (DRY) { fs.writeFileSync(path.join(ROOT, 'out', 'alert-' + id + '.svg'), svg); if (img) fs.writeFileSync(path.join(ROOT, 'out', 'alert-' + id + '.png'), img); return; }
+  if (DRY) { fs.writeFileSync(path.join(ROOT, 'out', 'alert-' + id + '.svg'), svg); if (img) fs.writeFileSync(path.join(ROOT, 'out', 'alert-' + id + '.png'), img); return { mode: img ? 'photo' : 'text', note: job.err }; }
   if (img) { const fd = new FormData(); fd.append('chat_id', env.TG_CHAT_ID); fd.append('caption', cap); fd.append('parse_mode', 'HTML'); fd.append('photo', new Blob([img], { type: 'image/png' }), id + '.png'); await tg('sendPhoto', fd, true); }
   else await tg('sendMessage', { chat_id: env.TG_CHAT_ID, parse_mode: 'HTML', text: cap });
+  return { mode: img ? 'photo' : 'text', note: job.err };
+}
+
+/* ---- ảnh thử: chạy tay với ô test, hoặc lệnh dùng một lần trong scripts/test-request.txt (thời điểm yêu cầu dạng ISO).
+   Lệnh trong tệp chỉ được làm một lần và chỉ khi còn mới (dưới 3 giờ), để mất trạng thái cũng không gửi lại về sau. ---- */
+let REQ = null;
+function testRequest() { try { const v = fs.readFileSync(path.join(__dirname, 'test-request.txt'), 'utf8').trim(), age = Date.now() - Date.parse(v); return age > -600000 && age < 3 * 3600000 ? v : null; } catch (e) { return null; } }
+/* không có setup đang theo dõi (ví dụ bias chưa rõ) thì lùi dần về quá khứ để lấy một setup mẫu */
+function pastDemo(F, opt) {
+  for (let cut = 4; cut <= 400 && cut < F.m15.length - 150; cut += 4) {
+    const T = F.m15[F.m15.length - 1 - cut].t + 900000, up = (a, ms) => a.filter((x) => x.t + ms <= T), f = { m15: up(F.m15, 900000), h1: up(F.h1, 3600000), h4: up(F.h4, 14400000), m5: up(F.m5, 300000) };
+    const r = A.analyze(f, opt), s = r.setups[0] || r.recent[0]; if (s) return { res: r, s, F: f };
+  }
+  return null;
+}
+async function sendTest(r, st) {
+  const status = { request: REQ || 'chạy tay', at: new Date().toISOString(), symbol: r ? r.id : null };
+  if (REQ && !DRY) st.testReq = REQ; // đánh dấu trước: lỗi giữa chừng cũng không gửi lặp
+  const clean = (m) => (env.TG_BOT_TOKEN ? String(m).split(env.TG_BOT_TOKEN).join('***') : String(m));
+  try {
+    if (!r) throw new Error('không tìm được setup mẫu để vẽ');
+    const how = await sendImages(r.sample, '🧪 <b>Ảnh thử ' + r.id + '</b>: mẫu ảnh đa khung sẽ đi kèm mỗi setup. Không phải tín hiệu.');
+    status.result = how.mode; if (how.note) status.detail = clean(how.note);
+    if (how.mode !== 'album') await say('⚠️ Ảnh thử không gửi được dạng album 4 khung, đã dùng ' + (how.mode === 'photo' ? 'ảnh đơn' : 'tin chữ') + '. Lý do: ' + esc(clean(how.note || 'không rõ')));
+  } catch (e) { status.result = 'fail'; status.detail = clean(e.message); await say('⚠️ Không gửi được ảnh thử: ' + esc(status.detail)); }
+  console.log('::notice title=Ảnh thử::' + status.result + (status.detail ? ' · ' + status.detail : ''));
+  if (REQ && !DRY) { // ghi kết quả lên nhánh data (không chứa thông tin riêng) để kiểm tra được từ ngoài
+    const files = { 'test-status.json': JSON.stringify(status) };
+    if (st.cal && st.cal.at) files['calendar.json'] = JSON.stringify({ updated: new Date(st.cal.at).toISOString(), source: 'faireconomy', until: st.cal.until, events: st.cal.events });
+    try { publish(files); } catch (e) { console.log('::warning::' + e.message); }
+  }
 }
 
 /* ---- lịch tin mạnh (USD, High): tải mỗi giờ từ lịch công khai, lưu trong trạng thái, đăng lên nhánh data cho trang web ---- */
@@ -141,7 +172,8 @@ async function scan(id, st) {
   console.log('Bias:', res.bias ? res.bias.text : '–', '· setup:', res.setups.length, '· ghi chú:', res.notes.filter(Boolean).join(' | '));
   if (res.held && res.held.length) console.log('[' + id + '] giữ lại ' + res.held.length + ' setup vì đang quanh giờ tin mạnh: ' + res.held.map((x) => x.dir + ' ' + x.score).join(', '));
   const out = { id, price: res.price, bias: res.bias ? res.bias.text : 'chưa đủ dữ liệu', ageMin, setups: res.setups.length, src: d.src, dec: cfg.dec };
-  const demo = res.setups[0] || res.recent[0]; if (TEST && demo) out.sample = job(demo, 'ẢNH THỬ: setup đang theo dõi hoặc đã qua, không phải tín hiệu mới');
+  if (TEST || REQ) { const label = 'ẢNH THỬ: setup đang theo dõi hoặc đã qua, không phải tín hiệu mới', demo = res.setups[0] || res.recent[0];
+    if (demo) out.sample = job(demo, label); else { const base = job(null, label), p = pastDemo(base.F, base.opt); if (p) out.sample = Object.assign(base, { res: p.res, s: p.s, F: p.F }); } }
   if (ageMin > 45 && !FORCE) { console.log('Dữ liệu cũ hơn 45 phút (thị trường nghỉ hoặc nguồn chậm): bỏ qua.'); return out; }
   let sent = 0;
   for (const s of res.setups) {
@@ -167,6 +199,7 @@ async function main(st) {
   if (first && st.last && (now0 - st.last) / 60000 > 20) await say('⚠️ <b>Bot đã ngừng quét khoảng ' + Math.round((now0 - st.last) / 60000) + ' phút</b> (từ ' + vn(st.last) + ' giờ VN) và vừa được khởi động lại. Những setup xuất hiện trong khoảng đó có thể đã bị bỏ lỡ.');
   st.last = now0;
   EV = await getEvents(st);
+  REQ = testRequest(); if (REQ === st.testReq) REQ = null;
   const rs = []; let err = null;
   for (const id of SYMBOLS) { try { rs.push(await scan(id, st)); } catch (e) { err = err || e; console.log('::warning::[' + id + '] ' + (e && e.message ? e.message : e)); } }
   const ok = rs.filter((r) => !r.fail);
@@ -178,7 +211,7 @@ async function main(st) {
   const sesLine = () => { if (!SES.length) return ''; const x = A.sessionsNext(Date.now(), 3, SES); return x.length ? '\n🕒 Phiên sắp tới (giờ VN): ' + x.map((e) => e.n + ' ' + vn(e.t)).join('; ') : ''; };
   const L = (r) => r.id + ' ≈ ' + (+r.price).toFixed(r.dec) + ' · ' + esc(r.bias) + (r.ageMin > 45 ? ' (thị trường nghỉ/dữ liệu chậm)' : '');
   if (TEST) await tg('sendMessage', { chat_id: env.TG_CHAT_ID, parse_mode: 'HTML', text: '✅ <b>Kết nối thành công.</b>\nBot sẽ gửi tin khi có setup đủ điều kiện (điểm ≥ ' + MIN + ').\nMã đang quét: ' + SYMBOLS.join(', ') + '\n' + ok.map((r) => L(r) + ' · ' + r.setups + ' setup').join('\n') });
-  if (TEST) { const r = ok.find((x) => x.sample); if (r) { try { await sendImages(r.sample, '🧪 <b>Ảnh thử ' + r.id + '</b>: mẫu ảnh đa khung sẽ đi kèm mỗi setup. Không phải tín hiệu.'); } catch (e) { console.log('::warning::Không gửi được ảnh thử: ' + e.message); } } }
+  if (TEST || REQ) await sendTest(ok.find((x) => x.sample), st);
   // báo sống: mỗi ngày một tin, gửi ở lượt quét đầu tiên sau HB_HOUR giờ UTC (kể cả khi thị trường nghỉ)
   const today = new Date().toISOString().slice(0, 10);
   if (ok.length && !env.ASOF && new Date().getUTCHours() >= HB_HOUR && st.hb !== today) {
