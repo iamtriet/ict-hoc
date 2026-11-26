@@ -137,7 +137,7 @@
         if (tp1 && x.h >= s.tp2) { state = 'tp2'; R = 0.5 * r1 + 0.5 * r2; exit = j; break; }
       }
     }
-    if (fill == null && state === 'pending') { const x = b[n - 1]; if (x.l <= s.zoneTop && s.model === 'ICT') state = 'inzone'; }
+    if (fill == null && state === 'pending') { const x = b[n - 1]; if (x.l <= s.zoneTop && s.model !== 'PA') state = 'inzone'; }
     if (R == null && fill != null) { const c = b[last].c; R = tp1 ? 0.5 * r1 + 0.5 * ((c - s.entry) / risk) : (c - s.entry) / risk; }
     return { state, fill, exit, R, tp1, r1, r2 };
   }
@@ -286,6 +286,8 @@
   const invalid = (r) => r.model === 'ICT'
     ? ['Giá ' + (r.dir === 'BUY' ? 'đóng cửa dưới' : 'đóng cửa trên') + ' mức SL ' + f2(r.sl) + ' (' + (r.dir === 'BUY' ? 'dưới' : 'trên') + ' điểm cực trị của cú quét): ý tưởng sai.', 'Giá chạy tới TP1 (' + f2(r.tp1) + ') mà chưa hồi về mức vào: hủy lệnh chờ, không đuổi.', 'Quá 9 giờ (36 nến 15m) chưa khớp: hủy lệnh chờ.']
     : ['Giá ' + (r.dir === 'BUY' ? 'đóng cửa dưới' : 'đóng cửa trên') + ' SL ' + f2(r.sl) + ' (' + (r.dir === 'BUY' ? 'dưới' : 'trên') + ' râu nến từ chối): retest thất bại.', 'Giá đã đi quá 0.5R khỏi mức vào mà bạn chưa vào: bỏ qua, chờ cơ hội sau.'];
+
+  A.lib = { MS, ny, mir, det, atrAt, keyLevels, biasOf, targets, pickTargets, track, round2, closedAt, f2, cfg: () => CFG }; // dùng chung với analyst-combo.js
 
   /* ---------- Phân tích chính ---------- */
   A.analyze = function (F, opt) {
