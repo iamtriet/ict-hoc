@@ -234,4 +234,19 @@ abbr.ab:hover, abbr.ab:focus-visible { border-bottom-color: var(--accent); color
 #an-run.pulse { animation: sypulse 1s ease-in-out infinite; }
 .an-md { border-left-style: dashed !important; } .an-mdn { font-size: 13.5px; color: var(--mute); } .an-mdhead h3 { margin: 12px 0 6px; font-size: 15px; } .an-ck b em { float: right; font-style: normal; font: 600 12px var(--mono); color: var(--mute); }
 .an-bt1 { font-size: 13.5px; color: var(--warn); margin: 6px 0 10px; } .an-cbctl { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 8px 0; font-size: 13.5px; }
+/* trang Phân tích gọn: nhận định trước, chi tiết gập lại */
+.an-page h1 { font-size: clamp(22px, 3vw, 28px); margin-bottom: 0; } .an-page .an-bar { margin: 10px 0 0; }
+.an-set { font-size: 13px; margin-left: auto; } .an-set summary { cursor: pointer; color: var(--mute); font-weight: 600; } .an-set > div { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 8px; } .an-set[open] { flex: 1 1 100%; margin-left: 0; }
+.an-verdict { border-left: 5px solid var(--info); } .an-verdict.v-ok { border-left-color: var(--bull); } .an-verdict.v-no { border-left-color: var(--bear); } .an-verdict.v-warn { border-left-color: var(--warn); }
+.an-v-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 20px; }
+.an-v-head { font: 800 clamp(24px, 4vw, 32px) var(--disp); letter-spacing: -.01em; color: var(--info); } .v-ok .an-v-head { color: var(--bull); } .v-no .an-v-head { color: var(--bear); } .v-warn .an-v-head { color: var(--warn); }
+.an-v-px { text-align: right; margin-left: auto; } .an-v-px b { font: 700 24px var(--mono); display: block; } .an-v-px span { font-size: 12px; color: var(--faint); }
+.page .an-v-tips { margin: 10px 0 12px; padding-left: 20px; font-size: 15.5px; } .an-v-tips li { margin: 5px 0; } .an-v-tips em { font-style: normal; color: var(--warn); font-size: 13px; }
+.an-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; } .an-tiles div { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--tint); } .an-tiles i, .an-lvs i { display: block; font-style: normal; font-size: 11.5px; color: var(--faint); } .an-tiles b { display: block; font-size: 14px; } .an-tiles span { font-size: 11.5px; color: var(--mute); } .an-tiles .v-ok b { color: var(--bull); } .an-tiles .v-no b { color: var(--bear); } .an-tiles .v-warn b { color: var(--warn); }
+.an-lvs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 18px; margin-top: 10px; } .an-lvs .an-lv { margin-top: 3px; }
+.an-facts { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; } .an-facts span { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; cursor: help; } .an-facts span.y { color: var(--bull); border-color: color-mix(in srgb, var(--bull) 40%, var(--line)); } .an-facts span.n { color: var(--faint); } .an-facts em { font-style: normal; font-family: var(--mono); opacity: .75; }
+.page .an-line { font-size: 13px; margin: 6px 0; } .an-r { margin-left: auto; }
+.an-past { display: flex; align-items: center; gap: 12px; margin-top: 12px; color: var(--warn); }
+.page .an-disc { font-size: 12px; color: var(--faint); text-align: center; margin: 12px 0 0; }
+.an-keep > summary { cursor: pointer; }
 .an-more { margin-top: 10px; } .an-more summary, .an-mdhead summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }

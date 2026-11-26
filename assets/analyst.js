@@ -194,7 +194,7 @@
     if (!box) {
       box = document.createElement('div'); box.className = 'tvbox'; box.style.minHeight = '330px'; fig.appendChild(box);
       ICT.tvEmbed(box, 'advanced-chart', { autosize: false, width: '100%', height: '330', symbol: SYM.tv, interval: TFS[key][1], timezone: 'America/New_York', theme: document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'), style: '1', locale: 'vi_VN', allow_symbol_change: false, hide_side_toolbar: false, save_image: true, support_host: 'https://www.tradingview.com' }, 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(SYM.tv));
-      note = document.createElement('div'); note.className = 'an-tvn tvn'; note.textContent = 'Widget TradingView không cho trang web vẽ thêm lên biểu đồ, nên Entry/SL/TP và các chú thích nằm ở tab "Phân tích". Muốn xem trên TradingView thì tự đặt các mức đó bằng công cụ vẽ của nó.'; fig.appendChild(note);
+      note = document.createElement('div'); note.className = 'an-tvn tvn'; note.textContent = 'Entry, SL, TP và chú thích xem ở tab "Phân tích".'; fig.appendChild(note);
     }
     box.style.display = ''; if (note) note.style.display = '';
   }
@@ -274,45 +274,93 @@
   /* ---------- giao diện ---------- */
   const ST = { pending: ['Chờ giá hồi về vùng vào', 'info'], inzone: ['Giá đang trong vùng, chờ phản ứng', 'warn'], active: ['Có thể vào / đang chạy', 'ok'], tp1: ['Đã đạt TP1', 'ok'], tp2: ['Đã đạt TP2', 'ok'], tp1be: ['TP1 rồi về hòa vốn', 'info'], sl: ['Đã chạm SL', 'no'], missed: ['Bỏ lỡ: giá chạy trước', 'info'], expired: ['Hết hiệu lực', 'info'] };
   const chip = (t, c) => '<span class="an-chip ' + (c || '') + '">' + t + '</span>';
+  const hmVN = (t) => new Date(t).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Ho_Chi_Minh' });
+  const dmVN = (t) => new Date(t).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
+  const short = (t) => String(t).replace(/\s*\([^()]*\)/g, '');
+  const side = (d) => (d === 'BUY' ? 'MUA' : 'BÁN');
+  /* mức thanh khoản gần giá nhất ở mỗi phía */
+  function nearLevels(res) {
+    const L = res.levels; if (!L) return { up: [], down: [] };
+    const all = L.hi.concat(L.lo), uniq = (a) => a.filter((x, i) => !a.slice(0, i).some((y) => Math.abs(y.p - x.p) < 1e-9));
+    return { up: uniq(all.filter((x) => x.p > res.price).sort((a, b) => a.p - b.p)).slice(0, 3), down: uniq(all.filter((x) => x.p < res.price).sort((a, b) => b.p - a.p)).slice(0, 3) };
+  }
   function levelsHtml(res) {
-    const L = res.levels, rows = []; if (!L) return '';
-    L.hi.forEach((l) => rows.push([l.p, l.name, 'hi'])); L.lo.forEach((l) => rows.push([l.p, l.name, 'lo']));
-    rows.sort((a, b) => b[0] - a[0]); if (!rows.length) return '';
-    return '<div class="an-lv">' + rows.map((r) => '<span class="an-lvi ' + r[2] + '"><b>' + f2(r[0]) + '</b> ' + esc(r[1]) + (res.price >= r[0] ? ' ▾' : ' ▴') + '</span>').join('') + '</div>';
+    const n = nearLevels(res); if (!n.up.length && !n.down.length) return '';
+    const chips = (a, cls) => (a.length ? a.map((x) => '<span class="an-lvi ' + cls + '"><b>' + f2(x.p) + '</b> ' + esc(short(x.name)) + '</span>').join('') : '<span class="muted">–</span>');
+    return '<div class="an-lvs"><div><i>▲ Phía trên</i><div class="an-lv">' + chips(n.up, 'hi') + '</div></div><div><i>▼ Phía dưới</i><div class="an-lv">' + chips(n.down, 'lo') + '</div></div></div>';
   }
-  function newsHtml(res) {
-    const N = res.news; if (!N) return '';
-    const src = CAL.upd && !ASOF ? 'lịch tin cập nhật ' + new Date(CAL.upd).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'lịch dựng sẵn (NFP, FOMC), có thể thiếu một số tin';
-    if (N.block) {
-      const e = N.current[0], m = e.mins, when = m > 0 ? 'còn ' + m + ' phút nữa là ra' : m < 0 ? 'đã ra ' + (-m) + ' phút trước' : 'đang ra';
-      return '<div class="callout warn"><p><b>⛔ Đang quanh giờ tin mạnh: ' + esc(e.label) + '</b> lúc ' + esc(A.tm(e.t)) + ' (' + when + '). Công cụ <b>đứng ngoài</b> đến ' + esc(A.tm(N.until)) + ': giá thường quét cả hai phía, spread nở rộng, tín hiệu kỹ thuật kém tin cậy.' +
-        (res.held.length ? ' Đang giữ lại ' + res.held.length + ' setup (' + res.held.map((x) => (x.dir === 'BUY' ? 'MUA' : 'BÁN') + ' ' + x.score + ' điểm').join(', ') + '); nếu hết tin mà setup còn hiệu lực thì sẽ hiện lại.' : '') + ' <span class="muted">(' + src + ')</span></p></div>';
+  /* một dòng gợi ý cho một lệnh của mô hình chính */
+  function callOf(s, res) {
+    const c = coreT(s.model), warn = c && !c.ok ? ' <em>(' + (s.model === 'PA' ? 'Price Action' : 'ICT') + ' chưa đạt kiểm chứng trên ' + SYM.name + ')</em>' : '', tp = ' · SL ' + f2(s.sl) + ' · TP ' + f2(s.tp1) + ' / ' + f2(s.tp2) + ' · điểm ' + s.score;
+    const fresh = s.model === 'PA' && s.state === 'active' && s.ready === res.n - 1;
+    if (s.state === 'inzone') return '<b>' + side(s.dir) + ' quanh ' + f2(s.entry) + '</b>: giá đang trong vùng, chờ phản ứng ở khung nhỏ' + tp + warn;
+    if (s.state === 'pending') return '<b>' + side(s.dir) + ' limit ' + f2(s.entry) + '</b>' + tp + warn;
+    if (fresh) return '<b>' + side(s.dir) + ' tại ' + f2(s.entry) + '</b>: nến xác nhận vừa đóng' + tp + warn;
+    return '<b>' + side(s.dir) + ' ' + f2(s.entry) + ' đang chạy</b>: chưa vào thì không đuổi' + tp + warn;
+  }
+  /* khi chưa có lệnh: cần chờ điều gì, dựa đúng trên điều kiện của mô hình */
+  function waitFor(res) {
+    const B = res.bias, d = B.dir, n = nearLevels(res), out = [];
+    if (!d) {
+      const t4 = B.t4.dir, t1 = B.t1.dir;
+      if (t4 && t1 !== t4 && B.D1) { const q = t4 > 0 ? B.D1.sw.hi : B.D1.sw.lo, last = q[q.length - 1]; if (last) out.push('Chờ 1H đóng cửa ' + (t4 > 0 ? 'trên ' : 'dưới ') + '<b>' + f2(last.p) + '</b> để cùng hướng 4H (' + (t4 > 0 ? 'tăng' : 'giảm') + ').'); }
+      if (!out.length) out.push('Chờ 4H và 1H đồng thuận một hướng.');
+      return out;
     }
-    if (!N.next.length) return '<p class="an-meta muted">🗓 Không có tin mạnh của USD trong 36 giờ tới <span>(' + src + ')</span></p>';
-    return '<div class="callout tip"><p><b>🗓 Tin mạnh sắp tới (USD):</b> ' + N.next.slice(0, 4).map((e) => esc(e.label) + ' lúc ' + esc(A.tm(e.t)) + ' (còn ' + (e.mins >= 90 ? Math.round(e.mins / 60) + ' giờ' : e.mins + ' phút') + ')').join(' · ') + '. Công cụ tự đứng ngoài từ trước tin 30–60 phút đến sau tin 30–90 phút. <span class="muted">(' + src + ')</span></p></div>';
+    const sell = d < 0, lv = sell ? n.up[0] : n.down[0], tgt = sell ? n.down[0] : n.up[0], cheap = sell ? B.loc < 0.5 : B.loc > 0.5, aim = tgt ? 'Mục tiêu ' + (sell ? 'phía dưới' : 'phía trên') + ': <b>' + f2(tgt.p) + '</b> (' + esc(short(tgt.name)) + ').' : '';
+    if (res.watch.length) return res.watch.map(esc).concat(aim ? [aim] : []);
+    if (cheap) out.push('Giá đang ở vùng ' + (sell ? 'rẻ' : 'đắt') + ': không ' + (sell ? 'bán' : 'mua') + ' đuổi, chờ hồi ' + (sell ? 'lên trên ' : 'xuống dưới ') + '<b>' + f2(B.range.eq) + '</b> (EQ).');
+    out.push(lv ? 'Chờ quét <b>' + f2(lv.p) + '</b> (' + esc(short(lv.name)) + ') rồi MSS ' + (sell ? 'giảm' : 'tăng') + ' trên 15m.' : 'Chờ quét ' + (sell ? 'đỉnh' : 'đáy') + ' gần nhất rồi MSS ' + (sell ? 'giảm' : 'tăng') + ' trên 15m.');
+    if (aim) out.push(aim);
+    return out;
   }
-  function biasHtml(res) {
-    const B = res.bias; if (!B) return '';
-    const conflict = (B.t4.dir && B.t1.dir && B.t4.dir !== B.t1.dir) ? '<p class="an-warn">Lưu ý: 4H và 1H đang ngược hướng nhau, độ tin cậy của bias thấp. Chỉ canh những setup có điểm cao.</p>' : '';
-    return '<section class="an-card"><div class="an-h"><h2>Nhận định HTF</h2>' + chip(esc(B.text), B.dir > 0 ? 'ok' : B.dir < 0 ? 'no' : 'info') + '</div><ul>' + B.reasons.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>' + conflict + levelsHtml(res) + '</section>';
+  function newsTile(res) {
+    const N = res.news; if (!N) return ['Tin mạnh', '–', 'bộ lọc đang tắt'];
+    const src = CAL.upd && !ASOF ? '' : ' · lịch dựng sẵn';
+    if (N.block) return ['Tin mạnh', '⛔ ' + N.current[0].label, hmVN(N.current[0].t) + ' · đứng ngoài tới ' + hmVN(N.until) + src, 'no'];
+    const e = N.next[0]; if (!e) return ['Tin mạnh', 'Không có', 'trong 36 giờ' + src];
+    return ['Tin mạnh', e.label, hmVN(e.t) + ' ' + dmVN(e.t) + ' · còn ' + (e.mins >= 90 ? Math.round(e.mins / 60) + ' giờ' : e.mins + ' phút') + src, e.mins <= 180 ? 'warn' : ''];
   }
+  function sessionTile() {
+    const t = ASOF || Date.now(), cur = A.SESSIONS.map((x) => A.sessionsDue(t, x.e - x.s, [x.id])[0]).filter(Boolean)[0], nx = A.sessionsNext(t, 1)[0];
+    if (cur) return ['Phiên', cur.n.replace('Phiên ', ''), 'tới ' + hmVN(cur.end) + ' VN', 'ok'];
+    return ['Phiên', nx ? 'Chờ ' + nx.n.replace('Phiên ', '') : '–', nx ? hmVN(nx.t) + ' VN ' + dmVN(nx.t) : ''];
+  }
+  /* khối đầu trang: hành động nên làm, gợi ý cụ thể và các dữ kiện chính */
+  function verdictHtml(res) {
+    const B = res.bias; if (!B) return '<section class="an-card"><p>' + esc(res.notes[0] || 'Chưa đủ dữ liệu.') + '</p></section>';
+    let head, cls, tips = [];
+    const md = mdShown(res).filter((x) => x.state === 'active' || !(x.far > 0.04));
+    if (res.closed) { head = 'THỊ TRƯỜNG NGHỈ'; cls = 'info'; tips = ['Chờ mở cửa lại (tối Chủ nhật giờ New York).']; }
+    else if (res.news && res.news.block) { head = 'ĐỨNG NGOÀI'; cls = 'warn'; tips = ['Không vào lệnh tới <b>' + hmVN(res.news.until) + '</b> (' + esc(res.news.current[0].label) + ').' + (res.held.length ? ' Đang giữ lại ' + res.held.length + ' lệnh.' : '')]; }
+    else if (res.setups.length) { const s = res.setups[0]; head = 'CÓ LỆNH ' + side(s.dir); cls = s.dir === 'BUY' ? 'ok' : 'no'; tips = res.setups.map((x) => callOf(x, res)); }
+    else if (B.dir) { head = 'CHỜ ' + (B.dir > 0 ? 'MUA' : 'BÁN'); cls = B.dir > 0 ? 'ok' : 'no'; tips = waitFor(res); }
+    else { head = 'ĐỨNG NGOÀI'; cls = 'info'; tips = waitFor(res); }
+    if (!res.closed && B.t4.dir && B.t1.dir && B.t4.dir !== B.t1.dir) tips.push('<em>4H và 1H đang ngược hướng: độ tin cậy thấp, chỉ xét lệnh điểm cao.</em>');
+    if (!res.closed && !res.setups.length && !['ICT', 'PA'].some((m) => (coreT(m) || {}).ok)) tips.push('<em>ICT và Price Action lỗ trong kiểm chứng ' + SYM.name + ': điều kiện chờ ở trên chỉ để quan sát.</em>');
+    if (!res.closed) md.slice(0, 2).forEach((x) => tips.push('Mô hình ' + x.tf + ': <b>' + side(x.dir) + ' ' + (x.state === 'pending' ? x.type.toLowerCase() + ' ' : '') + f2(x.entry) + '</b> · SL ' + f2(x.sl) + ' · điểm ' + x.score + ' (' + esc(short(x.name)) + ')'));
+    const dir = (t) => (t.dir > 0 ? '▲ Tăng' : t.dir < 0 ? '▼ Giảm' : 'Chưa rõ'), tf = (t, bars) => [dir(t), t.dir && bars[t.i] ? t.k + ' ' + dmVN(bars[t.i].t) : '', t.dir > 0 ? 'ok' : t.dir < 0 ? 'no' : ''];
+    const tiles = [['Cấu trúc 4H'].concat(tf(B.t4, OUT.F.h4)), ['Cấu trúc 1H'].concat(tf(B.t1, OUT.F.h1)), ['Vị trí trong range 4H', Math.round(B.loc * 100) + '% · ' + (B.loc < 0.5 ? 'Discount' : 'Premium'), f2(B.range.lo) + ' – ' + f2(B.range.hi)], sessionTile(), newsTile(res)];
+    return '<section class="an-card an-verdict v-' + cls + '"><div class="an-v-top"><div class="an-v-head">' + head + '</div><div class="an-v-px"><b>' + f2(res.price) + '</b><span>' + SYM.name + ' · nến đóng ' + hmVN(res.now) + ' VN ' + dmVN(res.now) + '</span></div></div>' +
+      '<ul class="an-v-tips">' + tips.map((t) => '<li>' + t + '</li>').join('') + '</ul>' +
+      '<div class="an-tiles">' + tiles.map((t) => '<div class="' + (t[3] ? 'v-' + t[3] : '') + '"><i>' + t[0] + '</i><b>' + esc(t[1]) + '</b><span>' + esc(t[2] || '') + '</span></div>').join('') + '</div>' + levelsHtml(res) + '</section>';
+  }
+  const factChips = (checks, pts) => '<div class="an-facts">' + checks.map((c) => '<span class="' + (c.ok ? 'y' : 'n') + '" title="' + esc(c.detail) + '">' + (c.ok ? '✔ ' : '✖ ') + esc(short(c.label)) + (pts ? ' <em>' + c.pts + '</em>' : '') + '</span>').join('') + '</div>';
   function setupHtml(s, res, k) {
-    const st = ST[s.state] || ['', ''], now = s.model === 'PA' && s.state === 'active' && s.ready === res.n - 1 ? ['Nến xác nhận vừa đóng: vào được', 'ok'] : st;
-    return '<section class="an-card an-setup ' + (s.dir === 'BUY' ? 'b' : 's') + '" data-k="' + k + '">' +
-      '<div class="an-h"><span class="an-dir ' + (s.dir === 'BUY' ? 'b' : 's') + '">' + (s.dir === 'BUY' ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(s.title) + '</h2>' + chip('Điểm ' + s.score + ' · ' + s.grade, s.grade === 'A+' ? 'ok' : '') + chip(now[0], now[1]) + coreChip(s.model) + '</div>' +
+    const st = ST[s.state] || ['', ''], now = s.model === 'PA' && s.state === 'active' && s.ready === res.n - 1 ? ['Nến xác nhận vừa đóng: vào được', 'ok'] : st, buy = s.dir === 'BUY';
+    const cancel = ['đóng cửa ' + (buy ? 'dưới ' : 'trên ') + f2(s.sl)].concat(s.model === 'ICT' ? ['chạm TP1 trước khi khớp', 'quá 9 giờ chưa khớp'] : ['giá đã đi quá 0.5R mà chưa vào']);
+    return '<section class="an-card an-setup ' + (buy ? 'b' : 's') + '" data-k="' + k + '">' +
+      '<div class="an-h"><span class="an-dir ' + (buy ? 'b' : 's') + '">' + (buy ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(s.title) + '</h2>' + chip('Điểm ' + s.score + ' · ' + s.grade, s.grade === 'A+' ? 'ok' : '') + chip(now[0], now[1]) + coreChip(s.model) + '</div>' +
       '<div class="an-trade"><div><i>Entry</i><b>' + f2(s.entry) + '</b></div><div><i>Stop loss</i><b class="no">' + f2(s.sl) + '</b></div><div><i>TP1 · 1:' + s.rr1 + '</i><b class="ok">' + f2(s.tp1) + '</b></div><div><i>TP2 · 1:' + s.rr2 + '</i><b class="ok">' + f2(s.tp2) + '</b></div><div><i>Rủi ro</i><b>$' + f2(s.risk) + SYM.unit + '</b></div></div>' +
-      '<p class="an-tpn">TP1: ' + esc(s.tp1n) + '. TP2: ' + esc(s.tp2n) + '.</p>' +
-      figs() + '<p class="muted an-leg">Vùng xanh/đỏ nhạt trên biểu đồ là TP1/SL của các setup khác: đã qua (ghi kết quả) hoặc đang chờ. Zoom out để xem các setup cũ hơn.</p>' +
-      '<div class="an-btns"><button type="button" class="btn pri" data-a="png">⬇ Lưu ảnh phân tích (PNG)</button><button type="button" class="btn" data-a="copy">⧉ Sao chép kế hoạch</button></div>' +
-      '<h3>Phân tích phản ứng giá</h3><ol class="an-story">' + s.story.map((t) => '<li>' + t + '</li>').join('') + '</ol>' +
-      '<h3>Điều kiện đã đáp ứng</h3><div class="an-ck">' + s.checks.map((c) => '<div class="' + (c.ok ? 'y' : 'n') + '"><b>' + (c.ok ? '✔' : '✖') + ' ' + esc(c.label) + '</b><span>' + esc(c.detail) + '</span></div>').join('') + '</div>' +
-      '<div class="an-two"><div><h3>Vô hiệu khi</h3><ul>' + s.invalid.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul></div><div><h3>Quản lý lệnh</h3><ul>' + s.manage.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul></div></div></section>';
+      factChips(s.checks) + '<p class="an-line"><b>Hủy nếu:</b> ' + cancel.join(' · ') + '. <b>Quản lý:</b> chốt 50% ở TP1, dời SL về hòa vốn.</p>' +
+      figs() +
+      '<details class="an-keep" data-id="' + esc(s.id) + '"><summary>Phân tích chi tiết</summary><ol class="an-story">' + s.story.map((t) => '<li>' + t + '</li>').join('') + '</ol>' +
+      '<div class="an-ck">' + s.checks.map((c) => '<div class="' + (c.ok ? 'y' : 'n') + '"><b>' + (c.ok ? '✔' : '✖') + ' ' + esc(c.label) + '</b><span>' + esc(c.detail) + '</span></div>').join('') + '</div>' +
+      '<p class="an-line">TP1: ' + esc(s.tp1n) + '. TP2: ' + esc(s.tp2n) + '.</p></details>' +
+      '<div class="an-btns"><button type="button" class="btn sm" data-a="png">⬇ Lưu ảnh</button><button type="button" class="btn sm" data-a="copy">⧉ Sao chép</button></div></section>';
   }
-  function emptyHtml(res) {
-    const why = res.notes.filter(Boolean).concat(res.watch).map((t) => '<li>' + esc(t) + '</li>').join('');
-    return '<section class="an-card an-none" data-k="none"><div class="an-h"><h2>Mô hình chính: chưa có setup đủ điều kiện</h2>' + chip('Đứng ngoài', 'info') + '</div><p>Công cụ chỉ đưa ra lệnh khi cả bias HTF lẫn cấu trúc 15m đều đáp ứng điều kiện của một mô hình. Hiện tại thì chưa, nên không có lệnh BUY/SELL nào được gợi ý. Đứng ngoài cũng là một quyết định giao dịch.</p>' + (why ? '<ul>' + why + '</ul>' : '') +
-      figs({ h1: "cấu trúc", m15: "diễn biến gần nhất" }) + '<p class="muted an-leg">Vùng xanh/đỏ nhạt trên biểu đồ là TP1/SL của các setup khác: đã qua (ghi kết quả) hoặc đang chờ. Zoom out để xem các setup cũ hơn.</p>' +
-      '<div class="an-btns"><button type="button" class="btn" data-a="png">⬇ Lưu ảnh phân tích (PNG)</button></div></section>';
+  function emptyHtml() {
+    return '<section class="an-card an-none" data-k="none"><div class="an-h"><h2>Biểu đồ</h2><button type="button" class="btn sm an-r" data-a="png">⬇ Lưu ảnh</button></div>' + figs({ h1: 'cấu trúc', m15: 'diễn biến gần nhất' }) + '</section>';
   }
   /* ---------- mô hình bổ sung (đã công bố, đã qua kiểm chứng trên đúng mã) ---------- */
   const evText = (a) => a[0] + ' lệnh · thắng ' + a[1] + '% · ' + (a[2] >= 0 ? '+' : '') + a[2] + 'R · PF ' + a[3];
@@ -334,53 +382,48 @@
     A.GOLD_TESTS.map((r) => '<tr><td>' + esc(r[0]) + '</td>' + r[1].map((p) => '<td><span class="muted">' + esc(p[0]) + '</span><br><span class="' + (p[1] > 0 ? 'up' : 'dn') + '">' + (p[1] > 0 ? '+' : '') + p[1] + 'R</span></td>').join('') + '</tr>').join('') +
     '</table></div><p class="muted">Hệ trong ngày phải đạt ở cả PAXG hai giai đoạn lẫn vàng tương lai thật; hệ chỉ mua khung ngày phải đạt ở cả ba giai đoạn. Các hệ chỉ mua đều lỗ trong 2013–2018 (vàng giảm và đi ngang): phần lãi chủ yếu đến từ việc vàng tăng, không phải từ điểm vào.</p></details>';
   function allHtml(res) {
-    const md = mdShown(res); if (!res.setups.length && !md.length) return '';
+    const md = mdShown(res); if (res.setups.length + md.length < 2) return '';
     const row = (x, kind, name, ref, tgt, st) => '<tr><td>' + kind + '</td><td><a href="#" data-go="' + ref + '">' + esc(name) + '</a></td><td class="' + (x.dir === 'BUY' ? 'up' : 'dn') + '">' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td>' + tgt + '</td><td><b>' + x.score + '</b> · ' + x.grade + '</td><td>' + esc(st) + '</td></tr>';
     return '<section class="an-card"><div class="an-h"><h2>Tất cả lệnh đang gợi ý</h2></div><div class="tblw"><table><tr><th>Nhóm</th><th>Mô hình</th><th>Hướng</th><th>Entry</th><th>SL</th><th>Chốt lời</th><th>Điểm</th><th>Trạng thái</th></tr>' +
       res.setups.map((x, k) => row(x, '<b>Chính</b>' + coreMark(x.model), x.title, 'k' + k, 'TP1 ' + f2(x.tp1) + ' · TP2 ' + f2(x.tp2), (ST[x.state] || [x.state])[0])).join('') +
       md.map((x, i) => row(x, 'Bổ sung ' + x.tf, x.name, 'm' + i, x.tf === '1D' && (x.key === 'nr7' || x.key === 'wil') ? 'Cuối ngày UTC' : 'Theo quy tắc thoát', mdState(x))).join('') +
-      '</table></div><p class="muted">Điểm của hai nhóm dùng <b>thang khác nhau</b> nên không so trực tiếp.</p></section>';
+      '</table></div>' + (res.setups.length && md.length ? '<p class="muted an-line">Điểm hai nhóm khác thang.</p>' : '') + '</section>';
   }
   function mdCard(x, i) {
     const m = A.MODELS[x.key], ev = m.ev[SYM.id];
     return '<section class="an-card an-setup an-md ' + (x.dir === 'BUY' ? 'b' : 's') + '" data-m="' + i + '">' +
       '<div class="an-h"><span class="an-dir ' + (x.dir === 'BUY' ? 'b' : 's') + '">' + (x.dir === 'BUY' ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(x.name) + '</h2>' + chip(x.tf) + chip('Điểm ' + x.score + ' · ' + x.grade, x.grade === 'A+' ? 'ok' : '') + chip(mdState(x), x.state === 'active' ? 'ok' : 'info') + '</div>' +
       '<div class="an-trade"><div><i>' + (x.state === 'pending' ? esc(x.type) : 'Entry') + '</i><b>' + f2(x.entry) + '</b></div><div><i>Stop loss</i><b class="no">' + f2(x.sl) + '</b></div><div><i>Rủi ro</i><b>$' + f2(x.risk) + SYM.unit + '</b></div>' + (x.R != null ? '<div><i>Đang lời/lỗ</i><b class="' + (x.R >= 0 ? 'ok' : 'no') + '">' + sg(x.R) + '</b></div>' : '') + '</div>' +
-      '<p class="an-tpn">' + esc(x.why) + ' <b>Thoát:</b> ' + esc(x.exitRule) + (x.state === 'active' ? ' Lệnh đã khớp: nếu bạn chưa vào thì <b>đừng đuổi</b>.' : '') + (x.far > 0.04 ? ' Mức này còn cách giá ' + (x.far * 100).toFixed(1) + '%.' : '') + '</p>' +
-      '<p class="an-bt1"><b>Kiểm chứng ' + SYM.name + '.</b> 2019–2023: ' + evText(ev.a) + '. 2024–2026: ' + evText(ev.b) + '. Phí gấp đôi (2024–2026): PF ' + ev.x2 + '.</p>' +
-      '<div class="an-ck">' + x.checks.map((k) => '<div class="' + (k.ok ? 'y' : 'n') + '"><b>' + (k.ok ? '✔' : '✖') + ' ' + esc(k.label) + ' <em>' + k.pts + '/' + k.max + '</em></b><span>' + esc(k.detail) + '</span></div>').join('') + '</div>' +
-      '<details class="an-more" data-id="' + esc(x.id) + '"><summary>Biểu đồ và quy tắc</summary>' + figs({ d1: 'xu hướng và mức giá', m15: 'diễn biến trong ngày' }, ['d1', 'm15']) + '<p>' + esc(m.d) + '</p><p class="muted">Nguồn: ' + esc(m.by) + '.</p></details>' +
-      '<div class="an-btns"><button type="button" class="btn" data-a="copy">⧉ Sao chép kế hoạch</button></div></section>';
+      '<p class="an-line">' + esc(x.why) + ' <b>Thoát:</b> ' + esc(x.exitRule.replace(/^Thoát /, '')) + (x.state === 'active' ? ' <b>Chưa vào thì không đuổi.</b>' : '') + '</p>' +
+      factChips(x.checks, true) +
+      '<p class="an-line muted">Kiểm chứng 2024–26: ' + (ev.b[2] >= 0 ? '+' : '') + ev.b[2] + 'R · thắng ' + ev.b[1] + '% · PF ' + ev.b[3] + ' (phí gấp đôi ' + ev.x2 + ')</p>' +
+      '<details class="an-more" data-id="' + esc(x.id) + '"><summary>Biểu đồ</summary>' + figs({ d1: 'xu hướng và mức giá', m15: 'diễn biến trong ngày' }, ['d1', 'm15']) + '<p class="an-line muted">' + esc(m.d) + '</p></details>' +
+      '<div class="an-btns"><button type="button" class="btn sm" data-a="copy">⧉ Sao chép</button></div></section>';
   }
   const mdPlan = (x) => [SYM.name + ' ' + x.dir + ' — ' + x.name, (x.state === 'pending' ? x.type : 'Entry') + ': ' + f2(x.entry), 'SL: ' + f2(x.sl) + '  (rủi ro $' + f2(x.risk) + SYM.unit + ')', 'Thoát: ' + x.exitRule, x.why, 'Điểm ' + x.score + '/100 (' + x.grade + ')', 'Nội dung giáo dục, không phải lời khuyên đầu tư.'].join('\n');
   const testTable = () => '<details><summary>Tất cả mô hình đã thử và kết quả (kể cả mô hình bị loại)</summary><div class="tblw"><table><tr><th>Mô hình</th><th>Khung</th><th>Vàng 2020–23</th><th>Vàng 2024–26</th><th>BTC 2019–23</th><th>BTC 2024–26</th><th>Kết luận</th></tr>' +
     A.MODEL_TESTS.map((r) => { const c = (v) => '<td class="' + (v > 0 ? 'up' : 'dn') + '">' + (v > 0 ? '+' : '') + v + 'R</td>'; return '<tr><td>' + esc(r[0]) + '</td><td>' + r[1] + '</td>' + c(r[2][0]) + c(r[2][1]) + c(r[3][0]) + c(r[3][1]) + '<td>' + (r[4] ? '<b>Đạt trên BTC</b>' : 'Loại') + '</td></tr>'; }).join('') +
     '</table></div><p class="muted">R = lời/lỗ tính theo số tiền rủi ro mỗi lệnh, đã trừ phí. Đạt = có lãi và profit factor ≥ 1.15 ở cả hai giai đoạn, từ 40 lệnh trở lên. Một mô hình “đạt” vẫn có thể đạt do may mắn vì đã thử nhiều cấu hình.</p></details>';
+  /* phần chính: chỉ lệnh và vị thế của mô hình bổ sung; mã không có mô hình đạt thì không hiện gì */
   function modelsHtml(res) {
-    const md = res.md; if (!md) return '';
-    let h = '<section class="an-card an-mdhead"><div class="an-h"><h2>Mô hình bổ sung</h2>' + chip(md.list.length ? md.list.length + ' mô hình đạt kiểm chứng' : 'Chưa có mô hình đạt', md.list.length ? 'ok' : 'info') + '</div>';
-    if (!md.list.length) {
-      const good = ['ICT', 'PA'].filter((m) => (coreT(m) || {}).ok);
-      h = '<section class="an-card an-mdhead"><div class="an-h"><h2>Mô hình đã kiểm chứng trên ' + SYM.name + '</h2>' + chip(good.length ? good.join(', ') + ' đạt' : 'Chưa có mô hình đạt', good.length ? 'ok' : 'info') + '</div>';
-      h += '<p>' + (good.length ? 'Trong mọi mô hình đã đo, <b>chỉ ' + good.join(', ') + '</b> (mô hình chính, lệnh hiển thị ở phía trên) đạt tiêu chí trên ' + SYM.name + '. ' : '') + 'Đã thử thêm ' + (A.MODEL_TESTS.length + (SYM.id === 'XAUUSD' ? A.GOLD_TESTS.length : 0)) + ' cấu hình của các hệ đã công bố: <b>không cấu hình nào đạt</b>, nên không hiển thị lệnh bổ sung cho mã này.</p>' + coreTable() +
-        (good.length ? '<div class="callout warn"><p><b>Lợi thế của ICT trên vàng mỏng:</b> profit factor khoảng 1.2, từng sụt khoảng 18R, năm 2023 lỗ nhẹ, và khi phí gấp đôi thì gần hòa vốn (PF 1.03–1.05). Hãy kiểm tra spread của sàn bạn dùng.</p></div>' : '') +
-        (SYM.id === 'XAUUSD' ? goldTable() : '') + testTable() + '</section>';
-      return '<div id="an-md">' + h + '</div>';
-    }
-    h += '<p>Các hệ giao dịch đã công bố, dùng tham số gốc, độc lập với hai mô hình chính và chưa gửi Telegram. Điểm = bằng chứng kiểm chứng của mô hình (tối đa 60) + bối cảnh xu hướng hiện tại (tối đa 40).</p>' +
-      '<div class="callout warn"><p><b>Đọc trước:</b> nhóm theo xu hướng (Turtle, động lượng, SMA) lãi chủ yếu ở chiều mua trong các đợt tăng lớn 2019–2021, <b>yếu đi nhiều từ 2024</b>, tỷ lệ thắng chỉ khoảng 30% và có chuỗi thua dài. Kết quả quá khứ không đảm bảo tương lai.</p></div>' +
-      '<div class="an-cbctl"><label class="an-auto"><input type="checkbox" id="an-mdon"' + (mdOn() ? ' checked' : '') + '> Hiện lệnh của mô hình bổ sung</label></div>';
+    const md = res.md; if (!md || !md.list.length) return '<div id="an-md"></div>';
+    let h = '<section class="an-card an-mdhead"><div class="an-h"><h2>Mô hình bổ sung</h2>' + chip('Nhóm xu hướng yếu từ 2024', 'warn') + '<label class="an-auto an-r"><input type="checkbox" id="an-mdon"' + (mdOn() ? ' checked' : '') + '> Hiện</label></div>';
     if (md.error) h += '<p class="an-warn">Không tính được: ' + esc(md.error) + '</p>';
     if (mdOn()) {
-      if (md.held) h += '<p class="an-warn">Đang quanh giờ tin mạnh: giữ lại ' + md.held + ' lệnh, không đặt lệnh chờ lúc này.</p>';
-      else if (!md.orders.length) h += '<p class="muted">Hiện không có lệnh chờ hay lệnh mới khớp.</p>';
-      if (md.notes.length) h += '<ul class="an-mdn">' + md.notes.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>';
-      if (md.holding.length) h += '<h3>Vị thế xu hướng đang chạy (đã vào từ trước, không đuổi)</h3><div class="tblw"><table><tr><th>Mô hình</th><th>Hướng</th><th>Vào ngày</th><th>Giá vào</th><th>SL / điểm thoát</th><th>Lời/lỗ</th><th>Điểm</th><th>Quy tắc thoát</th></tr>' +
-        md.holding.map((x) => '<tr><td>' + esc(x.name) + '</td><td class="' + (x.dir === 'BUY' ? 'up' : 'dn') + '">' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + new Date(x.since).toLocaleDateString('vi-VN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td class="' + (x.R >= 0 ? 'up' : 'dn') + '">' + sg(x.R) + '</td><td>' + x.score + '</td><td>' + esc(x.exitRule) + '</td></tr>').join('') + '</table></div>';
+      if (md.held) h += '<p class="an-warn">Quanh giờ tin mạnh: giữ lại ' + md.held + ' lệnh.</p>';
+      else if (!md.orders.length) h += '<p class="muted an-line">Không có lệnh chờ hay lệnh mới khớp.</p>';
+      if (md.holding.length) h += '<h3>Vị thế xu hướng đang chạy (không đuổi)</h3><div class="tblw"><table><tr><th>Mô hình</th><th>Hướng</th><th>Vào ngày</th><th>Giá vào</th><th>SL / thoát</th><th>Lời/lỗ</th><th>Điểm</th></tr>' +
+        md.holding.map((x) => '<tr><td title="' + esc(x.exitRule) + '">' + esc(x.name) + '</td><td class="' + (x.dir === 'BUY' ? 'up' : 'dn') + '">' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + new Date(x.since).toLocaleDateString('vi-VN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td class="' + (x.R >= 0 ? 'up' : 'dn') + '">' + sg(x.R) + '</td><td>' + x.score + '</td></tr>').join('') + '</table></div>';
     }
-    h += '<details><summary>Mô tả và kiểm chứng từng mô hình đạt chuẩn</summary><div class="tblw"><table><tr><th>Mô hình</th><th>Quy tắc</th><th>2019–2023</th><th>2024–2026</th></tr>' +
-      md.list.map((k) => { const m = A.MODELS[k], ev = m.ev[SYM.id]; return '<tr><td><b>' + esc(m.n) + '</b><br><span class="muted">' + esc(m.by) + '</span></td><td>' + esc(m.d) + '</td><td>' + evText(ev.a) + '</td><td>' + evText(ev.b) + '</td></tr>'; }).join('') + '</table></div></details>' + coreTable() + testTable() + '</section>';
-    return '<div id="an-md">' + h + mdShown(res).map(mdCard).join('') + '</div>';
+    return '<div id="an-md">' + h + '</section>' + mdShown(res).map(mdCard).join('') + '</div>';
+  }
+  /* phần tham khảo (gập): số liệu kiểm chứng, mô hình đã thử */
+  function evidenceHtml(res) {
+    const md = res.md; let h = coreTable();
+    if ((coreT('ICT') || {}).ok) h += '<p class="an-line muted">Lợi thế ICT mỏng: PF khoảng 1.2, từng sụt ~18R, phí gấp đôi thì gần hòa vốn.</p>';
+    if (md && md.list.length) h += '<h3>Mô hình bổ sung đạt chuẩn</h3><div class="tblw"><table><tr><th>Mô hình</th><th>Quy tắc</th><th>2019–2023</th><th>2024–2026</th></tr>' +
+      md.list.map((k) => { const m = A.MODELS[k], ev = m.ev[SYM.id]; return '<tr><td><b>' + esc(m.n) + '</b><br><span class="muted">' + esc(m.by) + '</span></td><td>' + esc(m.d) + '</td><td>' + evText(ev.a) + '</td><td>' + evText(ev.b) + '</td></tr>'; }).join('') + '</table></div>';
+    return h + (SYM.id === 'XAUUSD' ? goldTable() : '') + testTable();
   }
   function mdCharts(card, F, x) {
     const draw = (key, rows, annsOf, show) => {
@@ -408,20 +451,26 @@
   }
   function recentHtml(res) {
     if (!res.recent.length) return '';
-    return '<section class="an-card"><div class="an-h"><h2>Setup gần đây (đã qua)</h2></div><div class="tblw"><table><tr><th>Thời điểm tín hiệu</th><th>Mô hình</th><th>Hướng</th><th>Entry</th><th>SL</th><th>TP1</th><th>Điểm</th><th>Diễn biến</th></tr>' +
-      res.recent.map((s) => '<tr><td>' + esc(A.tm(res.m15[s.ready].t)) + '</td><td>' + s.model + '</td><td>' + (s.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + f2(s.entry) + '</td><td>' + f2(s.sl) + '</td><td>' + f2(s.tp1) + '</td><td>' + s.score + '</td><td>' + esc((ST[s.state] || [s.state])[0]) + '</td></tr>').join('') + '</table></div></section>';
+    return '<section class="an-card"><details class="an-keep" data-id="recent"><summary><b>Setup đã qua (' + res.recent.length + ')</b></summary><div class="tblw"><table><tr><th>Thời điểm tín hiệu</th><th>Mô hình</th><th>Hướng</th><th>Entry</th><th>SL</th><th>TP1</th><th>Điểm</th><th>Diễn biến</th></tr>' +
+      res.recent.map((s) => '<tr><td>' + esc(A.tm(res.m15[s.ready].t)) + '</td><td>' + s.model + '</td><td>' + (s.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + f2(s.entry) + '</td><td>' + f2(s.sl) + '</td><td>' + f2(s.tp1) + '</td><td>' + s.score + '</td><td>' + esc((ST[s.state] || [s.state])[0]) + '</td></tr>').join('') + '</table></div></details></section>';
   }
   function methodHtml() {
-    return '<section class="an-card"><details><summary><b>Cách công cụ ra quyết định (quy tắc đầy đủ)</b></summary>' +
+    return '<h3>Quy tắc ra quyết định</h3>' +
       '<ol><li><b>Bias HTF:</b> cấu trúc 4H (BOS/MSS gần nhất) có trọng số 2, cấu trúc 1H trọng số 1, cộng 1 điểm nếu giá ở vùng thuận lợi của dealing range 4H. Tổng điểm từ ±2 trở lên mới có bias; còn lại là "đứng ngoài".</li>' +
       '<li><b>Mô hình ICT (15m):</b> giá quét thanh khoản ngược bias (đáy/đỉnh swing, EQH/EQL, PDH/PDL, đỉnh/đáy phiên Á hoặc London) rồi đóng cửa quay lại → nhịp displacement ≥ 1.2× ATR kèm MSS/BOS → để lại FVG hoặc OB. Entry là điểm giữa vùng, SL ngoài điểm cực trị của cú quét.</li>' +
       '<li><b>Mô hình Price Action (15m):</b> phá swing có lực (BOS) → giá quay lại retest mức vừa phá → nến từ chối (pin bar hoặc engulfing) tại mức đó. Entry là giá đóng cửa nến từ chối, SL ngoài râu nến.</li>' +
       '<li><b>Mục tiêu:</b> TP1 là thanh khoản gần nhất chưa bị phá (swing 15m/1H/4H, PDH/PDL, đỉnh/đáy phiên) cách ít nhất 1R; TP2 là thanh khoản xa hơn cách ít nhất 2R. Bắt buộc RR tới TP2 ≥ 1:2.</li>' +
       '<li><b>Chấm điểm 0–100:</b> HTF đồng thuận, chất lượng cú quét, displacement, vùng vào, RR, độ sâu hồi, killzone, trùng vùng 1H chưa lấp. Chỉ hiển thị khi ≥ 50 điểm; tối đa 3 lệnh.</li>' +
-      '<li><b>Mô hình bổ sung:</b> không đổi hai mô hình trên. Chỉ hiển thị hệ giao dịch đã công bố nào qua được kiểm chứng nhiều năm trên đúng mã đang xem (xem bảng ở mục Mô hình bổ sung); lệnh theo mức phá vỡ, nhiều lệnh không có TP cố định mà thoát theo quy tắc. Cũng đứng ngoài quanh tin mạnh.</li>' +
+      '<li><b>Mô hình bổ sung:</b> không đổi hai mô hình trên. Chỉ hiển thị hệ giao dịch đã công bố nào qua được kiểm chứng nhiều năm trên đúng mã đang xem (xem bảng kiểm chứng phía trên); lệnh theo mức phá vỡ, nhiều lệnh không có TP cố định mà thoát theo quy tắc. Cũng đứng ngoài quanh tin mạnh.</li>' +
       '<li><b>Đứng ngoài quanh tin mạnh:</b> các tin USD mức High (lãi suất/FOMC, CPI, NFP, PCE, GDP, bán lẻ…) làm giá quét hai phía và spread nở rộng, nên công cụ không đưa lệnh từ trước tin 30–60 phút đến sau tin 30–90 phút (tin lãi suất/Fed có cửa sổ dài nhất). Áp dụng cho cả vàng và BTC.</li>' +
-      '<li><b>Không phát tín hiệu</b> khi bias không rõ, ' + (SYM.closes ? 'thị trường vàng nghỉ cuối tuần, ' : '') + 'SL nhỏ hơn $' + (+A.cfg(SYM.id, RAW ? RAW.m15[RAW.m15.length - 1].c : 1).minRisk.toFixed(4)) + ' (gần bằng spread/phí), hoặc vào quá nông (đuổi giá).</li></ol></details></section>';
+      '<li><b>Không phát tín hiệu</b> khi bias không rõ, ' + (SYM.closes ? 'thị trường vàng nghỉ cuối tuần, ' : '') + 'SL nhỏ hơn $' + (+A.cfg(SYM.id, RAW ? RAW.m15[RAW.m15.length - 1].c : 1).minRisk.toFixed(4)) + ' (gần bằng spread/phí), hoặc vào quá nông (đuổi giá).</li></ol>';
   }
+  const dataNote = () => (SYM.id === 'XAUUSD' ? 'Dữ liệu PAXG/USDT (Binance), quy đổi gần đúng về giá spot.' : 'Dữ liệu ' + SYM.src + ' (Binance), giao dịch 24/7.') + (SYM.bt ? ' ' + SYM.bt : '');
+  /* một mục gập duy nhất cuối trang cho mọi nội dung tham khảo */
+  const refHtml = (res) => '<section class="an-card"><details class="an-keep" data-id="ref"><summary><b>Kiểm chứng, quy tắc và dữ liệu</b></summary><p class="an-line">' + esc(dataNote()) + '</p>' + evidenceHtml(res) + '<div id="an-bt"></div>' + methodHtml() + '</details></section>' +
+    '<p class="an-disc">Nội dung giáo dục, không phải lời khuyên đầu tư. Đối chiếu biểu đồ broker trước khi vào lệnh.</p>';
+  /* giữ trạng thái mở của các mục gập qua mỗi lần tự cập nhật */
+  function keepOpen(out) { [].forEach.call(out.querySelectorAll('details.an-keep'), (d) => { if (MDOPEN.has(d.dataset.id)) d.open = true; d.addEventListener('toggle', () => (d.open ? MDOPEN.add(d.dataset.id) : MDOPEN.delete(d.dataset.id))); }); }
   function setStatus(msg, kind) { const e = $('#an-st'); if (e) { e.textContent = msg; e.className = 'an-st ' + (kind || ''); } }
 
   /* ---------- giá trực tiếp: Binance WebSocket (dự phòng: hỏi lại REST mỗi 5 giây), cập nhật nến đang chạy trên từng khung ---------- */
@@ -491,17 +540,16 @@
       SNAP = keep ? snap() : null; LVR.forEach((c) => clearTimeout(c.timer)); LVR.length = 0; LV.off = off;
       const res = A.analyze(F, { mode: modeOf(), sym: SYM.id, events: T ? CAL.events.concat(A.fallbackEvents(T)) : A.mergeEvents(CAL.events, CAL.until, Date.now()), at: T || Date.now() }); res.n = F.m15.length; res.m15 = F.m15; OUT = { F, res };
       try { res.md = A.models({ m15: F.m15, h4: F.h4L, d1: F.d1 }, { sym: SYM.id, news: res.news, bias: res.bias }); } catch (e) { console.error(e); res.md = { list: [], orders: [], holding: [], notes: [], held: 0, error: e.message || String(e) }; }
-      let h = T ? '<div class="callout tip"><p><b>Đang xem lại quá khứ:</b> đây là đúng những gì công cụ sẽ hiển thị tại thời điểm đó (chỉ dùng nến đã đóng).</p><div class="an-btns"><button type="button" class="btn pri" id="an-back">⟲ Quay về hiện tại</button></div></div>' : '';
-      h += '<p class="an-meta">Nến 15m mới nhất đóng lúc <b>' + esc(A.tm(res.now)) + '</b> · giá <b>' + f2(res.price) + '</b>' + (off ? ' (đã cộng chênh lệch ' + (off > 0 ? '+' : '') + f2(off) + (cfgGet().autoOff !== false ? ', tự hiệu chỉnh theo giá spot' : '') + ')' : '') + '</p>';
-      h += newsHtml(res);
-      if (res.closed) h += '<div class="callout warn"><p>' + esc(res.notes[0]) + '</p></div>';
-      h += biasHtml(res);
+      let h = T ? '<div class="an-past"><b>Đang xem lại quá khứ</b><button type="button" class="btn pri sm" id="an-back">⟲ Về hiện tại</button></div>' : '';
+      h += verdictHtml(res);
       h += '<div id="an-all">' + allHtml(res) + '</div>';
-      if (res.setups.length) res.setups.forEach((s, k) => (h += setupHtml(s, res, k))); else if (!res.closed) h += emptyHtml(res);
-      h += modelsHtml(res) + recentHtml(res) + '<div id="an-bt"></div>' + methodHtml();
+      if (res.setups.length) res.setups.forEach((s, k) => (h += setupHtml(s, res, k)));
+      h += modelsHtml(res);
+      if (!res.setups.length && !res.closed) h += emptyHtml();
+      h += recentHtml(res) + refHtml(res);
       out.innerHTML = h;
       if (res.bias) { if (res.setups.length) res.setups.forEach((s, k) => charts($('[data-k="' + k + '"]', out), F, res, s)); else if (!res.closed) charts($('[data-k=none]', out), F, res, null); }
-      modelsWire(out, F, res);
+      modelsWire(out, F, res); keepOpen(out);
       if (T) liveStop(); else liveStart(); const rb = $('#an-run', view); if (rb) rb.classList.remove('pulse');
       if (T) { const bk = $('#an-back', out); if (bk) bk.onclick = () => run(view, true, null); } else btBox(view);
       setStatus('Cập nhật xong lúc ' + new Date().toLocaleTimeString('vi-VN'), 'ok');
@@ -516,7 +564,7 @@
   /* ---------- kiểm chứng ---------- */
   function btBox(view) {
     const box = $('#an-bt', view); if (!box) return;
-    box.innerHTML = '<section class="an-card"><div class="an-h"><h2>Kiểm chứng trên dữ liệu gần đây</h2></div><p>Chạy lại đúng các quy tắc trên từng nến 15m trong khoảng 40 ngày gần nhất (chỉ dùng dữ liệu đã đóng tại thời điểm đó, không nhìn tương lai), giả lập lệnh limit/market, trừ chi phí giao dịch ước tính ' + (SYM.closes ? '$0.4 (spread)' : '0.05% giá (phí + trượt giá)') + '. Kế hoạch: chốt 50% ở TP1, dời SL về hòa vốn, phần còn lại tới TP2; nếu một nến chạm cả SL và TP thì tính SL trước.</p><div class="an-btns"><button type="button" class="btn" id="an-bt-go">▶ Chạy kiểm chứng (khoảng 10–20 giây)</button></div><div id="an-bt-out"></div></section>';
+    box.innerHTML = '<h3>Kiểm chứng ~40 ngày gần nhất</h3><div class="an-btns"><button type="button" class="btn sm" id="an-bt-go">▶ Chạy (10–20 giây)</button></div><div id="an-bt-out"></div>';
     $('#an-bt-go', box).onclick = () => runBt(view);
   }
   async function runBt(view) {
@@ -536,27 +584,20 @@
       (path ? '<svg class="an-eq" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Đường vốn theo R"><path d="' + path + '" fill="none" stroke="var(--accent)" stroke-width="2"/></svg>' : '') +
       '<h3>Các tín hiệu gần nhất (bấm Xem lại để mở đúng phân tích tại thời điểm đó)</h3><div class="tblw"><table><tr><th>Thời điểm</th><th>Mô hình</th><th>Hướng</th><th>Entry</th><th>SL</th><th>TP1</th><th>Điểm</th><th>Kết quả</th><th></th></tr>' +
       r.trades.slice(-14).reverse().map((x) => '<tr><td>' + esc(A.tm(x.t - 900000)) + '</td><td>' + x.model + '</td><td>' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td>' + f2(x.tp1) + '</td><td>' + x.score + '</td><td>' + (x.R == null ? 'Không khớp' : (x.R >= 0 ? '+' : '') + x.R.toFixed(2) + 'R') + '</td><td><button type="button" class="btn sm" data-asof="' + x.t + '">Xem lại</button></td></tr>').join('') + '</table></div>' +
-      '<p class="muted">ICT: ' + r.ICT.n + ' lệnh, thắng ' + r.ICT.win + ', ' + r.ICT.R.toFixed(1) + 'R · PA: ' + r.PA.n + ' lệnh, thắng ' + r.PA.win + ', ' + r.PA.R.toFixed(1) + 'R. *Thắng = lãi sau khi chốt một phần. Khoảng ' + Math.round(((r.ids - r.filled) / Math.max(1, r.ids)) * 100) + '% setup không khớp vì giá chạy tới mục tiêu mà không hồi về mức vào.</p>' +
-      '<div class="callout warn"><p>' + (small ? '<b>Mẫu quá nhỏ (' + r.filled + ' lệnh):</b> kết quả này gần như không có ý nghĩa thống kê. ' : '') + 'Đây là kiểm chứng trên chính dữ liệu dùng để thiết kế quy tắc (in-sample), dữ liệu là ' + (SYM.closes ? 'PAXG chứ không phải XAUUSD spot' : SYM.src + ' trên Binance, có thể lệch nhẹ so với sàn bạn dùng') + ', chưa tính trượt giá và sự khác biệt giữa broker. Kết quả quá khứ không đảm bảo tương lai. Hãy coi đây là bài kiểm tra "quy tắc có hoạt động như mô tả không", không phải bằng chứng có lãi.</p></div>';
+      '<p class="muted an-line">ICT: ' + r.ICT.n + ' lệnh, ' + r.ICT.R.toFixed(1) + 'R · PA: ' + r.PA.n + ' lệnh, ' + r.PA.R.toFixed(1) + 'R.' + (small ? ' <b>Mẫu quá nhỏ, ít ý nghĩa thống kê.</b>' : ' Mẫu ngắn, không đảm bảo tương lai.') + '</p>';
   }
 
   /* ---------- trang ---------- */
   ICT.analystPage = function (view) {
     const cfg = cfgGet(); SYM = A.SYMS[cfg.sym] || A.SYMS.XAUUSD;
-    view.innerHTML = '<div class="page wide"><div class="crumb">Thực hành</div><h1>Phân tích &amp; gợi ý lệnh <span id="an-h1"></span></h1>' +
-      '<p class="lead">Công cụ đọc nến thật đa khung (4H → 1H → 15m), chỉ đưa ra lệnh BUY/SELL (kèm SL, TP) khi cấu trúc giá đáp ứng đủ điều kiện của mô hình ICT hoặc Price Action. Không đủ điều kiện thì nói rõ là đứng ngoài. Mục <b>Mô hình bổ sung</b> bên dưới liệt kê lệnh của các hệ giao dịch đã công bố, chỉ những hệ đã qua kiểm chứng trên mã đang xem.</p>' +
-      '<div class="callout warn"><p>Đây là công cụ <b>giáo dục</b>: áp dụng quy tắc cố định lên dữ liệu giá để bạn thấy cách đọc cấu trúc, không phải lời khuyên đầu tư và không biết tình hình tài chính của bạn. Giao dịch đòn bẩy có thể mất toàn bộ vốn. Luôn tự kiểm tra lại trên biểu đồ của broker trước khi vào lệnh.</p></div>' +
-      '<div class="an-bar"><label>Mã <select id="an-sym">' + Object.keys(A.SYMS).map((k) => '<option value="' + k + '">' + A.SYMS[k].name + ' · ' + A.SYMS[k].label + '</option>').join('') + '</select></label><button type="button" class="btn pri" id="an-run">⟳ Phân tích ngay</button>' +
-      '<label class="an-auto" title="Khi nến 15m đóng, tự chạy lại phân tích (giữ nguyên zoom và các lớp bạn đã bật). Không chạy nếu bạn vừa thao tác trong 45 giây."><input type="checkbox" id="an-auto"> Tự cập nhật khi nến 15m đóng</label>' +
+    view.innerHTML = '<div class="page wide an-page"><h1>Phân tích <span id="an-h1"></span></h1>' +
+      '<div class="an-bar"><label>Mã <select id="an-sym">' + Object.keys(A.SYMS).map((k) => '<option value="' + k + '">' + A.SYMS[k].name + ' · ' + A.SYMS[k].label + '</option>').join('') + '</select></label><button type="button" class="btn pri" id="an-run">⟳ Phân tích ngay</button><span id="an-live" class="an-live"></span><span id="an-st" class="an-st"></span>' +
+      '<details class="an-set"><summary>⚙ Cài đặt</summary><div><label class="an-auto" title="Khi nến 15m đóng, tự chạy lại phân tích (giữ nguyên zoom và các lớp bạn đã bật). Không chạy nếu bạn vừa thao tác trong 45 giây."><input type="checkbox" id="an-auto"> Tự cập nhật khi nến 15m đóng</label>' +
       '<label>Mô hình <select id="an-mode"><option value="both">ICT + Price Action</option><option value="ict">Chỉ ICT</option><option value="pa">Chỉ Price Action</option></select></label>' +
-      '<span id="an-offbox"><label>Chênh lệch giá (cộng vào) <input id="an-off" type="number" step="0.1" value="' + (+cfg.off || 0) + '" style="width:90px"></label><button type="button" class="btn sm" id="an-spot" title="So giá PAXG với giá vàng spot (gold-api.com) rồi điền chênh lệch">Lấy theo giá spot</button><label class="an-auto" title="Tự lấy chênh lệch theo giá spot khi mở trang và mỗi lần phân tích (tối đa 4 phút một lần). Tắt nếu bạn muốn tự nhập."><input type="checkbox" id="an-autooff"> Tự động</label></span><span id="an-st" class="an-st"></span><span id="an-live" class="an-live"></span></div>' +
-      '<p class="muted" id="an-note"></p>' +
+      '<span id="an-offbox"><label>Chênh lệch giá <input id="an-off" type="number" step="0.1" value="' + (+cfg.off || 0) + '" style="width:90px"></label><button type="button" class="btn sm" id="an-spot" title="So giá PAXG với giá vàng spot (gold-api.com) rồi điền chênh lệch">Lấy theo giá spot</button><label class="an-auto" title="Tự lấy chênh lệch theo giá spot khi mở trang và mỗi lần phân tích (tối đa 4 phút một lần). Tắt nếu bạn muốn tự nhập."><input type="checkbox" id="an-autooff"> Tự động</label></span></div></details></div>' +
       '<div id="an-out"></div></div>';
     const symUi = () => {
       $('#an-sym', view).value = SYM.id; $('#an-mode', view).value = modeOf(); $('#an-h1', view).textContent = SYM.name; $('#an-offbox', view).style.display = SYM.id === 'XAUUSD' ? '' : 'none';
-      $('#an-note', view).textContent = SYM.id === 'XAUUSD' ? 'Dữ liệu: cặp PAXG/USDT trên Binance (token vàng, bám sát XAUUSD nhưng chênh vài đô và giao dịch cả cuối tuần). Nhập chênh lệch với broker của bạn để giá khớp.'
-        : 'Dữ liệu: cặp ' + SYM.src + ' trên Binance, giao dịch 24/7 nên không có ngày nghỉ. Giá có thể lệch nhẹ so với sàn bạn dùng. Phiên Á/London/New York và killzone vẫn tính theo giờ New York như với vàng, nhưng thanh khoản crypto ít phụ thuộc vào các phiên này hơn nên tín hiệu có thể kém ổn định hơn vàng: hãy xem phần Kiểm chứng bên dưới trước khi tin kết quả.';
-      if (SYM.bt) $('#an-note', view).textContent += ' ' + SYM.bt + ' Kết quả quá khứ không đảm bảo tương lai.';
     };
     symUi(); VIEW = view; $('#an-auto', view).checked = cfg.auto !== false; $('#an-auto', view).onchange = (e) => cfgSet({ auto: e.target.checked });
     ['pointerdown', 'wheel', 'keydown', 'touchstart'].forEach((ev) => view.addEventListener(ev, () => (UI.t = Date.now()), { capture: true, passive: true }));
