@@ -56,7 +56,7 @@ Khi một phiên (killzone) bắt đầu, bot gửi một tin ngắn: tên phiê
 
 ## Bitcoin (BTCUSD)
 
-Trang Phân tích có ô chọn mã XAUUSD / BTCUSD (dữ liệu Binance, BTC giao dịch 24/7), và Telegram gửi cả hai mã theo mặc định (tin BTC có ghi tên mã). Lưu ý: kiểm chứng 122 ngày gần nhất cho thấy các quy tắc này **không có lãi với BTC** (ICT −6.6R, Price Action −6.2R, sau phí), trong khi vàng +11.9R. Tín hiệu BTC chỉ nên dùng để tham khảo và học. Muốn tắt tin BTC: đặt biến `SYMBOLS` = `XAUUSD`.
+Trang Phân tích có ô chọn mã XAUUSD / BTCUSD (dữ liệu Binance, BTC giao dịch 24/7), và Telegram gửi cả hai mã theo mặc định (tin BTC có ghi tên mã). Lưu ý: kiểm chứng 01/2019 – 11/2026 cho thấy hai quy tắc ICT và Price Action **lỗ nặng với BTC** sau phí (ICT −266R, Price Action −168R), trong khi vàng ICT +76R, Price Action −9R (09/2020 – 11/2026). Tín hiệu BTC gửi qua Telegram chỉ nên dùng để học. Muốn tắt tin BTC: đặt biến `SYMBOLS` = `XAUUSD`. Các “mô hình bổ sung” trên trang web không gửi Telegram.
 
 ## Kiểm tra tự động
 

@@ -233,7 +233,7 @@
       let hi = -1e9, lo = 1e9;
       for (let i = x0; i < i1; i++) { hi = Math.max(hi, S.bars[i].h); lo = Math.min(lo, S.bars[i].l); }
       if (i1 <= x0) { hi = S.bars[0].h; lo = S.bars[0].l; }
-      if (o.pos) [o.pos.sl, o.pos.tp, o.pos.tp1, o.pos.tp2, o.pos.entry].forEach((p) => { if (p != null) { hi = Math.max(hi, p); lo = Math.min(lo, p); } });
+      if (o.pos) [o.pos.sl, o.pos.tp, o.pos.tp1, o.pos.tp2, o.pos.entry].forEach((p) => { if (p != null) { hi = Math.max(hi, p); lo = Math.min(lo, p); } }); if (o.fit) o.fit.forEach((p) => { hi = Math.max(hi, p); lo = Math.min(lo, p); });
       const span = Math.max(hi - lo, S.vol * 8), mid = (hi + lo) / 2; hi = mid + span * 0.6; lo = mid - span * 0.6; // chừa chỗ cho nhãn
       const px = (i) => m.l + (i - x0 + 0.5) * slot, py = (p) => m.t + ((hi - p) / (hi - lo)) * plotH;
       const D = L.size ? ICT.detect(S, i1) : null;

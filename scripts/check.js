@@ -12,7 +12,7 @@ if (!bad) ok('Cú pháp ' + files.length + ' file JS');
 
 // 2. lõi phân tích
 const win = { setTimeout, clearTimeout, console }; win.window = win; vm.createContext(win);
-['assets/engine.js', 'assets/analyst-core.js', 'assets/analyst-combo.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
+['assets/engine.js', 'assets/analyst-core.js', 'assets/analyst-models.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
 const A = win.ICT.analyst, rows = (a) => a.map((k) => ({ t: k[0], o: k[1], h: k[2], l: k[3], c: k[4] }));
 const num = (x) => typeof x === 'number' && isFinite(x);
 const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log('ℹ mã đang có:', ids.join(', '));
@@ -49,28 +49,41 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
       }
       ok(id + ': ' + (tested ? 'bộ lọc tin mạnh đúng (giữ setup khi tin sắp ra, không ảnh hưởng khi tin xa/mức thấp)' : 'không tìm được setup mẫu để thử bộ lọc tin (bỏ qua)'));
       await new Promise((res, rej) => { try { A.backtest(F, { mode: 'both', sym: id, start: 260 }, null, (r) => { if (![r.ids, r.filled, r.tot].every(num)) rej(new Error('kết quả kiểm chứng không phải số')); else { ok(id + ': kiểm chứng chạy được (' + r.ids + ' setup)'); res(); } }); } catch (e) { rej(e); } });
-      // gợi ý combo: mức giá đúng phía, điểm hợp lệ, không dùng nến sau thời điểm phân tích, đứng ngoài quanh tin
-      if (!d.m5) throw new Error('dữ liệu mẫu thiếu nến 5m (chạy node scripts/make-fixtures.js)');
-      const m5 = rows(d.m5), kinds = new Set(); let nc = 0, newsOk = false;
-      for (let cut = 0; cut <= 240; cut++) {
+      // mô hình bổ sung: chỉ mã đạt kiểm chứng mới có lệnh; mức giá đúng phía, điểm khớp bảng chấm, không dùng nến sau thời điểm xét, đứng ngoài quanh tin
+      if (!d.md1 || !d.mh4) throw new Error('dữ liệu mẫu thiếu nến ngày / 4H dài (chạy node scripts/make-fixtures.js)');
+      const md1 = rows(d.md1), mh4 = rows(d.mh4); let seen = 0, hold = 0, newsOk = false;
+      for (let cut = 0; cut <= 600; cut += 2) {
         const T = F.m15[F.m15.length - 1 - cut].t + 900000, up = (a, ms) => a.filter((x) => x.t + ms <= T);
-        const f = { m5: up(m5, 300000), m15: up(F.m15, 900000), h1: up(F.h1, 3600000), h4: up(F.h4, 14400000) };
-        const raw = A.combos(f, { sym: id, raw: true }).list, shown = A.combos(f, { sym: id });
-        raw.concat(shown.list).forEach((s) => {
-          nc++; kinds.add(s.combo);
-          if (!A.COMBOS[s.combo]) throw new Error('combo lạ ' + s.combo);
-          if (![s.entry, s.sl, s.tp1, s.tp2, s.score, s.rr1, s.rr2].every(num) || s.score < 0 || s.score > 100) throw new Error('combo có giá trị không hợp lệ');
-          if (s.dir === 'BUY' ? !(s.sl < s.entry && s.tp1 > s.entry && s.tp2 >= s.tp1) : !(s.sl > s.entry && s.tp1 < s.entry && s.tp2 <= s.tp1)) throw new Error('combo SL/TP sai phía: ' + s.combo + ' ' + s.dir + ' ' + [s.entry, s.sl, s.tp1, s.tp2]);
-          if (s.rr2 < 1.99) throw new Error('combo RR TP2 dưới 1:2');
-          if ([s.tReady, s.mss.t, s.zone.t].concat(s.sweep ? [s.sweep.t] : []).some((x) => x >= T)) throw new Error('combo dùng nến sau thời điểm phân tích');
-          if (!s.story.length || !s.invalid.length || !s.checks.length) throw new Error('combo thiếu nội dung');
+        const f = { m15: up(F.m15, 900000), h4: up(mh4, 14400000), d1: up(md1, 86400000) };
+        if (f.m15.length < 50) break;
+        const r = A.models(f, { sym: id, bias: { dir: 1 } });
+        if (!r.list.length) { if (r.orders.length || r.holding.length) throw new Error('mã không có mô hình đạt mà vẫn có lệnh'); continue; }
+        r.orders.concat(r.holding).forEach((x) => {
+          if (x.state === 'holding') hold++; else seen++;
+          if (![x.entry, x.sl, x.risk, x.score].every(num) || x.score < 0 || x.score > 100 || x.risk <= 0) throw new Error('lệnh mô hình có giá trị không hợp lệ: ' + x.key);
+          if (x.checks.reduce((a, c) => a + c.pts, 0) !== x.score || x.checks.reduce((a, c) => a + c.max, 0) !== 100) throw new Error('điểm không khớp bảng chấm: ' + x.key);
+          if (x.state !== 'holding' && (x.dir === 'BUY' ? !(x.sl < x.entry) : !(x.sl > x.entry))) throw new Error('SL sai phía: ' + x.key + ' ' + x.dir + ' ' + [x.entry, x.sl]);
+          if (x.since != null && x.since >= T) throw new Error('vị thế mở sau thời điểm xét: ' + x.key);
+          if (!x.why && x.state !== 'holding') throw new Error('thiếu giải thích: ' + x.key);
         });
-        if (shown.list.length > 8) throw new Error('quá 8 gợi ý combo');
-        if (shown.list.length && !newsOk) { newsOk = true; const b = A.combos(f, { sym: id, news: { block: true } }); if (b.list.length || b.held !== shown.list.length) throw new Error('combo không đứng ngoài khi đang quanh tin mạnh'); }
+        if (r.orders.length && !newsOk) { newsOk = true; const b = A.models(f, { sym: id, news: { block: true } }); if (b.orders.length || b.held !== r.orders.length) throw new Error('mô hình bổ sung không đứng ngoài khi đang quanh tin mạnh'); }
       }
-      if (!nc) throw new Error('không dò được combo nào trên dữ liệu mẫu');
-      ok(id + ': combo hợp lệ (' + nc + ' lượt, ' + kinds.size + '/' + Object.keys(A.COMBOS).length + ' loại)');
+      const has = Object.keys(A.MODELS).some((k) => A.MODELS[k].ev[id]);
+      if (has && (!seen || !hold)) throw new Error('mô hình bổ sung không sinh ra lệnh nào trên dữ liệu mẫu');
+      ok(id + ': mô hình bổ sung hợp lệ (' + (has ? seen + ' lượt lệnh, ' + hold + ' lượt vị thế đang giữ' : 'mã này chưa có mô hình đạt') + ')');
     } catch (e) { fail(id + ': ' + e.message); }
+  }
+  // quy tắc Turtle và NR7 trên chuỗi giá dựng sẵn
+  {
+    const D = 86400000, flat = (n, p) => Array.from({ length: n }, (_, i) => ({ t: i * D, o: p, h: p + 1, l: p - 1, c: p }));
+    const d1 = flat(30, 100).concat([{ t: 30 * D, o: 100, h: 104, l: 100, c: 103 }, { t: 31 * D, o: 103, h: 103, l: 90, c: 91 }]);
+    const tr = A.modelTrades('t20', { d1 }, { sym: 'BTCUSD' }).filter((t) => t.dir === 1);
+    if (tr.length !== 1 || tr[0].entry !== 101 || !(tr[0].exit >= 96.5 && tr[0].exit <= 99) || tr[0].tx !== 31 * D) fail('quy tắc Turtle sai trên chuỗi dựng sẵn: ' + JSON.stringify(tr));
+    const bars = [], day = (k, hi, lo) => { for (let j = 0; j < 96; j++) bars.push({ t: k * D + j * 900000, o: 100, h: j === 10 ? hi : 100.5, l: j === 20 ? lo : 99.5, c: 100 }); };
+    for (let k = 0; k < 6; k++) day(k, 105, 95); day(6, 101, 99); day(7, 103, 99.5);
+    const nr = A.modelTrades('nr7', { m15: bars }, { sym: 'BTCUSD' });
+    if (nr.length !== 1 || nr[0].dir !== 1 || nr[0].entry !== 101 || nr[0].risk !== 2) fail('quy tắc NR7 sai trên chuỗi dựng sẵn: ' + JSON.stringify(nr));
+    if (!bad) ok('Quy tắc Turtle và NR7 đúng trên chuỗi dựng sẵn');
   }
   // lịch tin: cửa sổ đứng ngoài đúng theo từng loại tin
   const fb = A.fallbackEvents(Date.UTC(2026, 10, 25)), has = (t, ti) => fb.some((e) => e.t === t && e.title === ti);

@@ -62,13 +62,13 @@
   const closed = (a) => a.slice(0, -1); // nến cuối cùng luôn là nến đang chạy
   const shift = (a, off) => (off ? a.map((x) => ({ t: x.t, o: x.o + off, h: x.h + off, l: x.l + off, c: x.c + off })) : a);
   async function loadAll(n15) {
-    const bn = SYM.bn, id = SYM.id, [m15, h1, h4, m5] = await Promise.all([klines('15m', n15 || 1000, bn), klines('1h', 1000, bn), klines('4h', 500, bn), klines('5m', 1000, bn)]);
-    return { m15: closed(m15), h1: closed(h1), h4: closed(h4), m5: closed(m5), at: Date.now(), sym: id, bn };
+    const bn = SYM.bn, id = SYM.id, [m15, h1, h4, m5, d1] = await Promise.all([klines('15m', n15 || 1000, bn), klines('1h', 1000, bn), klines('4h', 1000, bn), klines('5m', 1000, bn), klines('1d', 1000, bn)]); // 4H và 1D lấy dài cho mô hình bổ sung
+    return { m15: closed(m15), h1: closed(h1), h4: closed(h4), m5: closed(m5), d1: closed(d1), at: Date.now(), sym: id, bn };
   }
   /* cập nhật gia tăng: chỉ hỏi vài nến gần nhất rồi ghép vào dữ liệu đang có (nhanh hơn tải lại cả nghìn nến); lệch quá thì ném lỗi để tải lại đầy đủ */
-  const TFV = { m5: 300000, m15: 900000, h1: 3600000, h4: 14400000 }, CAP = { m5: 1100, m15: 1100, h1: 1100, h4: 600 };
+  const TFV = { m5: 300000, m15: 900000, h1: 3600000, h4: 14400000, d1: 86400000 }, CAP = { m5: 1100, m15: 1100, h1: 1100, h4: 1100, d1: 1100 };
   async function refreshRaw(raw) {
-    const spec = [['m15', '15m'], ['h1', '1h'], ['h4', '4h'], ['m5', '5m']], parts = await Promise.all(spec.map((x) => klines(x[1], 12, raw.bn))), nr = { sym: raw.sym, bn: raw.bn, at: Date.now() };
+    const spec = [['m15', '15m'], ['h1', '1h'], ['h4', '4h'], ['m5', '5m'], ['d1', '1d']], parts = await Promise.all(spec.map((x) => klines(x[1], 12, raw.bn))), nr = { sym: raw.sym, bn: raw.bn, at: Date.now() };
     spec.forEach((x, i) => {
       const k = x[0], arr = raw[k].slice(), got = closed(parts[i]); if (!arr.length || !got.length) throw new Error('thiếu nến');
       if (got[0].t > arr[arr.length - 1].t + TFV[k]) throw new Error('lệch dữ liệu');
@@ -91,7 +91,7 @@
     S.ann = ann;
     return ICT.Chart(host, S, Object.assign({ layers: ['ann', 'struct', 'fvg', 'ob'], avail: ['ann', 'swing', 'struct', 'fvg', 'ob', 'liq', 'kz'], h: 330, slotMin: 5 }, o || {}));
   }
-  const TFS = { h4: ['4H', '240', 'bias và dealing range'], h1: ['1H', '60', 'cấu trúc và vùng vào'], m15: ['15m', '15', 'kích hoạt và kế hoạch lệnh'], m5: ['5m', '5', 'điểm vào chi tiết'] };
+  const TFS = { h4: ['4H', '240', 'bias và dealing range'], h1: ['1H', '60', 'cấu trúc và vùng vào'], m15: ['15m', '15', 'kích hoạt và kế hoạch lệnh'], m5: ['5m', '5', 'điểm vào chi tiết'], d1: ['1D', 'D', 'xu hướng khung ngày'] };
   const extIx = (rows, t0, t1, low) => { let k = -1, v = low ? 1e18 : -1e18; rows.forEach((r, i) => { if (r.t >= t0 && r.t < t1 && (low ? r.l < v : r.h > v)) { v = low ? r.l : r.h; k = i; } }); return k < 0 ? ixAt(rows, t0) : k; };
   function charts(el, F, res, s) {
     const B = res.bias, m15 = F.m15, h1 = F.h1, h4 = F.h4, m5 = F.m5 || [];
@@ -158,8 +158,8 @@
 
   /* zoom / kéo từng khung: nút − + ⟲, Ctrl + cuộn chuột, kéo ngang để xem lịch sử */
   const ZM = new WeakMap();
-  const CBOPEN = new Set(); // các combo đang mở phần chi tiết (giữ lại khi tự cập nhật)
-  function snap() { const o = {}; LVR.forEach((c) => { if (c.combo) return; const z = ZM.get(c.fig); if (z && c.ch) o[c.key] = { n: z.e - z.s, tail: Math.max(0, z.len - z.e), layers: [...c.ch.layers] }; }); return o; }
+  const MDOPEN = new Set(); // các mô hình đang mở phần chi tiết (giữ lại khi tự cập nhật)
+  function snap() { const o = {}; LVR.forEach((c) => { if (c.extra) return; const z = ZM.get(c.fig); if (z && c.ch) o[c.key] = { n: z.e - z.s, tail: Math.max(0, z.len - z.e), layers: [...c.ch.layers] }; }); return o; }
   function zApply(z) { z.ch.setOpt('range', [z.s, z.e]); }
   function zoom(fig, f) {
     const z = ZM.get(fig); if (!z) return;
@@ -281,82 +281,81 @@
       figs({ h1: "cấu trúc", m15: "diễn biến gần nhất" }) + '<p class="muted an-leg">Vùng xanh/đỏ nhạt trên biểu đồ là TP1/SL của các setup khác: đã qua (ghi kết quả) hoặc đang chờ. Zoom out để xem các setup cũ hơn.</p>' +
       '<div class="an-btns"><button type="button" class="btn" data-a="png">⬇ Lưu ảnh phân tích (PNG)</button></div></section>';
   }
-  /* ---------- gợi ý mở rộng (combo) ---------- */
-  const btOf = (c) => { const t = A.COMBO_BT[SYM.id], v = t && t[c.combo + '|' + c.tf]; return v ? { n: v[0], win: v[1], R: v[2], avg: v[2] / v[0] } : null; };
-  const btText = (v) => (!v ? 'chưa kiểm chứng' : v.n + ' lệnh khớp · thắng ' + v.win + '% · ' + (v.R >= 0 ? '+' : '') + v.R.toFixed(1) + 'R (' + (v.avg >= 0 ? '+' : '') + v.avg.toFixed(2) + 'R/lệnh)' + (v.n < 30 ? ' · mẫu quá nhỏ' : ''));
-  const cbMin = () => +cfgGet().cbMin || 40;
-  const cbShown = (res) => (cfgGet().cbOn === false || !res.combo ? [] : res.combo.list.map((c, i) => ({ c, i })).filter((x) => x.c.score >= cbMin()));
-  const stChip = (x) => { const t = ST[x.state] || [x.state, '']; return chip(t[0], t[1]); };
-  /* bảng tổng hợp: mọi lệnh đang gợi ý, cả hai mô hình chính lẫn combo */
+  /* ---------- mô hình bổ sung (đã công bố, đã qua kiểm chứng trên đúng mã) ---------- */
+  const evText = (a) => a[0] + ' lệnh · thắng ' + a[1] + '% · ' + (a[2] >= 0 ? '+' : '') + a[2] + 'R · PF ' + a[3];
+  const mdOn = () => cfgGet().mdOn !== false;
+  const mdShown = (res) => (!mdOn() || !res.md ? [] : res.md.orders);
+  const mdState = (x) => (x.state === 'pending' ? 'Chờ phá mức (' + x.type + ')' + (x.far > 0.04 ? ' · cách giá ' + (x.far * 100).toFixed(0) + '%' : '') : x.state === 'active' ? 'Đã khớp, đang chạy' : 'Đang giữ từ trước');
+  const sg = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + 'R';
+  /* bảng tổng hợp: mọi lệnh đang gợi ý, cả hai mô hình chính lẫn mô hình bổ sung */
   function allHtml(res) {
-    const cb = cbShown(res); if (!res.setups.length && !cb.length) return '';
-    const row = (x, kind, name, ref, bt) => '<tr><td>' + kind + '</td><td><a href="#" data-go="' + ref + '">' + esc(name) + '</a></td><td class="' + (x.dir === 'BUY' ? 'up' : 'dn') + '">' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td>' + f2(x.tp1) + '</td><td>' + f2(x.tp2) + '</td><td>1:' + x.rr2 + '</td><td><b>' + x.score + '</b> · ' + x.grade + '</td><td>' + esc((ST[x.state] || [x.state])[0]) + '</td><td>' + bt + '</td></tr>';
-    return '<section class="an-card"><div class="an-h"><h2>Tất cả lệnh đang gợi ý</h2></div><div class="tblw"><table><tr><th>Nhóm</th><th>Cấu trúc</th><th>Hướng</th><th>Entry</th><th>SL</th><th>TP1</th><th>TP2</th><th>RR TP2</th><th>Điểm</th><th>Trạng thái</th><th>Kiểm chứng (R/lệnh)</th></tr>' +
-      res.setups.map((x, k) => row(x, '<b>Chính</b>', x.title, 'k' + k, '–')).join('') +
-      cb.map(({ c, i }) => { const v = btOf(c); return row(c, 'Combo ' + c.tf, c.name + (c.against ? ' (ngược bias)' : ''), 'c' + i, v ? '<span class="' + (v.avg >= 0 && v.n >= 30 ? 'up' : v.avg < 0 ? 'dn' : 'muted') + '">' + (v.avg >= 0 ? '+' : '') + v.avg.toFixed(2) + (v.n < 30 ? ' (ít mẫu)' : '') + '</span>' : '–'); }).join('') +
-      '</table></div><p class="muted">Điểm của hai nhóm dùng <b>thang khác nhau</b> nên không so trực tiếp. Cột kiểm chứng của nhóm Chính xem ở mục Kiểm chứng cuối trang.</p></section>';
+    const md = mdShown(res); if (!res.setups.length && !md.length) return '';
+    const row = (x, kind, name, ref, tgt, st) => '<tr><td>' + kind + '</td><td><a href="#" data-go="' + ref + '">' + esc(name) + '</a></td><td class="' + (x.dir === 'BUY' ? 'up' : 'dn') + '">' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td>' + tgt + '</td><td><b>' + x.score + '</b> · ' + x.grade + '</td><td>' + esc(st) + '</td></tr>';
+    return '<section class="an-card"><div class="an-h"><h2>Tất cả lệnh đang gợi ý</h2></div><div class="tblw"><table><tr><th>Nhóm</th><th>Mô hình</th><th>Hướng</th><th>Entry</th><th>SL</th><th>Chốt lời</th><th>Điểm</th><th>Trạng thái</th></tr>' +
+      res.setups.map((x, k) => row(x, '<b>Chính</b>', x.title, 'k' + k, 'TP1 ' + f2(x.tp1) + ' · TP2 ' + f2(x.tp2), (ST[x.state] || [x.state])[0])).join('') +
+      md.map((x, i) => row(x, 'Bổ sung ' + x.tf, x.name, 'm' + i, x.tf === '1D' && (x.key === 'nr7' || x.key === 'wil') ? 'Cuối ngày UTC' : 'Theo quy tắc thoát', mdState(x))).join('') +
+      '</table></div><p class="muted">Điểm của hai nhóm dùng <b>thang khác nhau</b> nên không so trực tiếp.</p></section>';
   }
-  function comboCard(c, i) {
-    return '<section class="an-card an-setup an-combo ' + (c.dir === 'BUY' ? 'b' : 's') + '" data-c="' + i + '">' +
-      '<div class="an-h"><span class="an-dir ' + (c.dir === 'BUY' ? 'b' : 's') + '">' + (c.dir === 'BUY' ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(c.name) + '</h2>' + chip('Combo ' + c.tf) + chip('Điểm ' + c.score + ' · ' + c.grade) + stChip(c) + (c.against ? chip('Ngược bias HTF', 'no') : '') + '</div>' +
-      '<div class="an-trade"><div><i>Entry</i><b>' + f2(c.entry) + '</b></div><div><i>Stop loss</i><b class="no">' + f2(c.sl) + '</b></div><div><i>TP1 · 1:' + c.rr1 + '</i><b class="ok">' + f2(c.tp1) + '</b></div><div><i>TP2 · 1:' + c.rr2 + '</i><b class="ok">' + f2(c.tp2) + '</b></div><div><i>Rủi ro</i><b>$' + f2(c.risk) + SYM.unit + '</b></div></div>' +
-      '<p class="an-tpn">Vùng vào ' + esc(c.zone.type) + ' ' + f2(c.zone.bot) + ' – ' + f2(c.zone.top) + '. TP1: ' + esc(c.tp1n) + '. TP2: ' + esc(c.tp2n) + '.' + (c.also.length ? ' <b>Cùng vùng vào còn khớp:</b> ' + c.also.map(esc).join('; ') + '.' : '') + '</p>' +
-      '<p class="an-bt1"><b>Kiểm chứng combo này (' + SYM.name + ', ' + c.tf + ', 122 ngày):</b> ' + btText(btOf(c)) + '</p>' +
-      '<div class="an-ck">' + c.checks.map((k) => '<div class="' + (k.ok ? 'y' : 'n') + '"><b>' + (k.ok ? '✔' : '✖') + ' ' + esc(k.label) + ' <em>' + (k.max ? k.pts + '/' + k.max : k.pts) + '</em></b><span>' + esc(k.detail) + '</span></div>').join('') + '</div>' +
-      '<details class="an-more" data-id="' + esc(c.id) + '"><summary>Biểu đồ, phân tích và điều kiện hủy</summary>' + figs({ m5: 'cấu trúc và điểm vào', m15: 'cấu trúc và điểm vào', h1: 'vùng khung lớn' }, [c.tf === '5m' ? 'm5' : 'm15', 'h1']) +
-      '<ol class="an-story">' + c.story.map((t) => '<li>' + t + '</li>').join('') + '</ol><h3>Vô hiệu khi</h3><ul>' + c.invalid.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul></details>' +
+  function mdCard(x, i) {
+    const m = A.MODELS[x.key], ev = m.ev[SYM.id];
+    return '<section class="an-card an-setup an-md ' + (x.dir === 'BUY' ? 'b' : 's') + '" data-m="' + i + '">' +
+      '<div class="an-h"><span class="an-dir ' + (x.dir === 'BUY' ? 'b' : 's') + '">' + (x.dir === 'BUY' ? '▲ MUA' : '▼ BÁN') + '</span><h2>' + esc(x.name) + '</h2>' + chip(x.tf) + chip('Điểm ' + x.score + ' · ' + x.grade, x.grade === 'A+' ? 'ok' : '') + chip(mdState(x), x.state === 'active' ? 'ok' : 'info') + '</div>' +
+      '<div class="an-trade"><div><i>' + (x.state === 'pending' ? esc(x.type) : 'Entry') + '</i><b>' + f2(x.entry) + '</b></div><div><i>Stop loss</i><b class="no">' + f2(x.sl) + '</b></div><div><i>Rủi ro</i><b>$' + f2(x.risk) + SYM.unit + '</b></div>' + (x.R != null ? '<div><i>Đang lời/lỗ</i><b class="' + (x.R >= 0 ? 'ok' : 'no') + '">' + sg(x.R) + '</b></div>' : '') + '</div>' +
+      '<p class="an-tpn">' + esc(x.why) + ' <b>Thoát:</b> ' + esc(x.exitRule) + (x.state === 'active' ? ' Lệnh đã khớp: nếu bạn chưa vào thì <b>đừng đuổi</b>.' : '') + (x.far > 0.04 ? ' Mức này còn cách giá ' + (x.far * 100).toFixed(1) + '%.' : '') + '</p>' +
+      '<p class="an-bt1"><b>Kiểm chứng ' + SYM.name + '.</b> 2019–2023: ' + evText(ev.a) + '. 2024–2026: ' + evText(ev.b) + '. Phí gấp đôi (2024–2026): PF ' + ev.x2 + '.</p>' +
+      '<div class="an-ck">' + x.checks.map((k) => '<div class="' + (k.ok ? 'y' : 'n') + '"><b>' + (k.ok ? '✔' : '✖') + ' ' + esc(k.label) + ' <em>' + k.pts + '/' + k.max + '</em></b><span>' + esc(k.detail) + '</span></div>').join('') + '</div>' +
+      '<details class="an-more" data-id="' + esc(x.id) + '"><summary>Biểu đồ và quy tắc</summary>' + figs({ d1: 'xu hướng và mức giá', m15: 'diễn biến trong ngày' }, ['d1', 'm15']) + '<p>' + esc(m.d) + '</p><p class="muted">Nguồn: ' + esc(m.by) + '.</p></details>' +
       '<div class="an-btns"><button type="button" class="btn" data-a="copy">⧉ Sao chép kế hoạch</button></div></section>';
   }
-  function comboHtml(res) {
-    if (!res.combo || res.closed) return '';
-    const on = cfgGet().cbOn !== false, cb = cbShown(res), t = A.COMBO_BT[SYM.id] || {}, tot = Object.keys(t).reduce((a, k) => a + t[k][2], 0);
-    let h = '<section class="an-card an-cbhead"><div class="an-h"><h2>Gợi ý mở rộng (combo)</h2>' + (on ? chip(cb.length + ' lệnh') : chip('Đang tắt')) + '</div>' +
-      '<p>Các cấu trúc ghép (thanh khoản, MSS, OB, FVG, Breaker, OTE, khung giờ) trên 5m/15m với vùng 1H/4H, <b>nới hơn</b> hai mô hình chính và có thể ngược bias. Mỗi lệnh được chấm điểm để bạn tự đánh giá; không gửi Telegram.</p>' +
-      '<div class="callout warn"><p><b>Kiểm chứng 122 ngày trên ' + SYM.name + ': nhóm combo chưa cho thấy lợi thế</b> (cộng tất cả ' + (tot >= 0 ? '+' : '') + tot.toFixed(0) + 'R sau phí, tính riêng từng combo). Điểm cao cũng <b>không</b> đi kèm kết quả tốt hơn: điểm chỉ đo số yếu tố hội tụ, không phải xác suất thắng.</p></div>' +
-      '<div class="an-cbctl"><label class="an-auto"><input type="checkbox" id="an-cbon"' + (on ? ' checked' : '') + '> Hiện gợi ý combo</label><label>Chỉ hiện từ <select id="an-cbmin">' + [40, 50, 62, 75].map((v) => '<option value="' + v + '"' + (v === cbMin() ? ' selected' : '') + '>' + v + ' điểm</option>').join('') + '</select></label></div>' +
-      '<details><summary>Các combo đang dò và kết quả kiểm chứng từng loại</summary><div class="tblw"><table><tr><th>Combo</th><th>Mô tả</th><th>Khung</th><th>Kiểm chứng ' + SYM.name + '</th></tr>' +
-      Object.keys(A.COMBOS).map((k) => { const m = A.COMBOS[k]; return '<tr><td><b>' + esc(m.n) + '</b></td><td>' + esc(m.d) + '</td><td>' + m.tf + '</td><td>' + m.tf.split(', ').map((f) => f + ': ' + btText(btOf({ combo: k, tf: f }))).join('<br>') + '</td></tr>'; }).join('') + '</table></div></details>';
-    if (on && res.combo.held) h += '<p class="an-warn">Đang quanh giờ tin mạnh: giữ lại ' + res.combo.held + ' gợi ý combo.</p>';
-    else if (on && !cb.length) h += '<p class="muted">Hiện chưa có cấu trúc combo nào đạt từ ' + cbMin() + ' điểm đang chờ hoặc vừa khớp.</p>';
-    if (on && res.combo.error) h += '<p class="an-warn">Không dò được combo: ' + esc(res.combo.error) + '</p>';
-    return '<div id="an-cb">' + h + '</section>' + cb.map((x) => comboCard(x.c, x.i)).join('') + '</div>';
+  const mdPlan = (x) => [SYM.name + ' ' + x.dir + ' — ' + x.name, (x.state === 'pending' ? x.type : 'Entry') + ': ' + f2(x.entry), 'SL: ' + f2(x.sl) + '  (rủi ro $' + f2(x.risk) + SYM.unit + ')', 'Thoát: ' + x.exitRule, x.why, 'Điểm ' + x.score + '/100 (' + x.grade + ')', 'Nội dung giáo dục, không phải lời khuyên đầu tư.'].join('\n');
+  const testTable = () => '<details><summary>Tất cả mô hình đã thử và kết quả (kể cả mô hình bị loại)</summary><div class="tblw"><table><tr><th>Mô hình</th><th>Khung</th><th>Vàng 2020–23</th><th>Vàng 2024–26</th><th>BTC 2019–23</th><th>BTC 2024–26</th><th>Kết luận</th></tr>' +
+    A.MODEL_TESTS.map((r) => { const c = (v) => '<td class="' + (v > 0 ? 'up' : 'dn') + '">' + (v > 0 ? '+' : '') + v + 'R</td>'; return '<tr><td>' + esc(r[0]) + '</td><td>' + r[1] + '</td>' + c(r[2][0]) + c(r[2][1]) + c(r[3][0]) + c(r[3][1]) + '<td>' + (r[4] ? '<b>Đạt trên BTC</b>' : 'Loại') + '</td></tr>'; }).join('') +
+    '</table></div><p class="muted">R = lời/lỗ tính theo số tiền rủi ro mỗi lệnh, đã trừ phí. Đạt = có lãi và profit factor ≥ 1.15 ở cả hai giai đoạn, từ 40 lệnh trở lên. Một mô hình “đạt” vẫn có thể đạt do may mắn vì đã thử nhiều cấu hình.</p></details>';
+  function modelsHtml(res) {
+    const md = res.md; if (!md) return '';
+    let h = '<section class="an-card an-mdhead"><div class="an-h"><h2>Mô hình bổ sung</h2>' + chip(md.list.length ? md.list.length + ' mô hình đạt kiểm chứng' : 'Chưa có mô hình đạt', md.list.length ? 'ok' : 'info') + '</div>';
+    if (!md.list.length) {
+      h += '<p>Đã thử ' + A.MODEL_TESTS.length + ' cấu hình của các hệ giao dịch đã công bố trên dữ liệu nhiều năm của ' + SYM.name + ': <b>chưa cấu hình nào đạt tiêu chí</b> (phần lớn lãi từ 2024 nhưng lỗ giai đoạn 2020–2023, hoặc ngược lại). Vì vậy không hiển thị lệnh bổ sung cho mã này. Chọn mã BTCUSD để xem các mô hình đã đạt.</p>' + testTable() + '</section>';
+      return '<div id="an-md">' + h + '</div>';
+    }
+    h += '<p>Các hệ giao dịch đã công bố, dùng tham số gốc, độc lập với hai mô hình chính và chưa gửi Telegram. Điểm = bằng chứng kiểm chứng của mô hình (tối đa 60) + bối cảnh xu hướng hiện tại (tối đa 40).</p>' +
+      '<div class="callout warn"><p><b>Đọc trước:</b> nhóm theo xu hướng (Turtle, động lượng, SMA) lãi chủ yếu ở chiều mua trong các đợt tăng lớn 2019–2021, <b>yếu đi nhiều từ 2024</b>, tỷ lệ thắng chỉ khoảng 30% và có chuỗi thua dài. Kết quả quá khứ không đảm bảo tương lai.</p></div>' +
+      '<div class="an-cbctl"><label class="an-auto"><input type="checkbox" id="an-mdon"' + (mdOn() ? ' checked' : '') + '> Hiện lệnh của mô hình bổ sung</label></div>';
+    if (md.error) h += '<p class="an-warn">Không tính được: ' + esc(md.error) + '</p>';
+    if (mdOn()) {
+      if (md.held) h += '<p class="an-warn">Đang quanh giờ tin mạnh: giữ lại ' + md.held + ' lệnh, không đặt lệnh chờ lúc này.</p>';
+      else if (!md.orders.length) h += '<p class="muted">Hiện không có lệnh chờ hay lệnh mới khớp.</p>';
+      if (md.notes.length) h += '<ul class="an-mdn">' + md.notes.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>';
+      if (md.holding.length) h += '<h3>Vị thế xu hướng đang chạy (đã vào từ trước, không đuổi)</h3><div class="tblw"><table><tr><th>Mô hình</th><th>Hướng</th><th>Vào ngày</th><th>Giá vào</th><th>SL / điểm thoát</th><th>Lời/lỗ</th><th>Điểm</th><th>Quy tắc thoát</th></tr>' +
+        md.holding.map((x) => '<tr><td>' + esc(x.name) + '</td><td class="' + (x.dir === 'BUY' ? 'up' : 'dn') + '">' + (x.dir === 'BUY' ? 'MUA' : 'BÁN') + '</td><td>' + new Date(x.since).toLocaleDateString('vi-VN') + '</td><td>' + f2(x.entry) + '</td><td>' + f2(x.sl) + '</td><td class="' + (x.R >= 0 ? 'up' : 'dn') + '">' + sg(x.R) + '</td><td>' + x.score + '</td><td>' + esc(x.exitRule) + '</td></tr>').join('') + '</table></div>';
+    }
+    h += '<details><summary>Mô tả và kiểm chứng từng mô hình đạt chuẩn</summary><div class="tblw"><table><tr><th>Mô hình</th><th>Quy tắc</th><th>2019–2023</th><th>2024–2026</th></tr>' +
+      md.list.map((k) => { const m = A.MODELS[k], ev = m.ev[SYM.id]; return '<tr><td><b>' + esc(m.n) + '</b><br><span class="muted">' + esc(m.by) + '</span></td><td>' + esc(m.d) + '</td><td>' + evText(ev.a) + '</td><td>' + evText(ev.b) + '</td></tr>'; }).join('') + '</table></div></details>' + testTable() + '</section>';
+    return '<div id="an-md">' + h + mdShown(res).map(mdCard).join('') + '</div>';
   }
-  function comboCharts(card, F, res, c) {
-    const tfk = c.tf === '5m' ? 'm5' : 'm15', buy = c.dir === 'BUY', cz = { FVG: buy ? 'zb' : 'zr', OB: buy ? 'ob' : 'os', Breaker: 'note', IFVG: 'note' };
-    const draw = (key, rows, annsOf, withPos, show, layers) => {
+  function mdCharts(card, F, x) {
+    const draw = (key, rows, annsOf, show) => {
       const host = $('[data-ch=' + key + ']', card); if (!host) return;
       try {
         const S = mkS(rows, SYM.name + ' ' + TFS[key][0]), U = (p) => (p - S.base) / S.pip, ds = Math.max(0, rows.length - show);
-        const pos = withPos ? { i: ixAt(rows, c.tReady), dir: buy ? 1 : -1, entry: U(c.entry), sl: U(c.sl), tp1: U(c.tp1), tp2: U(c.tp2), rr1: c.rr1, rr2: c.rr2 } : null;
-        const ch = put(host, S, annsOf(rows, U), Object.assign({ pos, range: [ds, rows.length], h: 320, slotMin: 1, frames: false, lastLine: true, pad: 14 }, layers ? { layers } : {}));
-        LVR.push({ key, S, ch, fig: host.closest('figure'), t: rows[rows.length - 1].t, combo: true }); ZM.set(host.closest('figure'), { ch, len: rows.length, pad: 14, s: ds, e: rows.length, def: [ds, rows.length] });
+        const ch = put(host, S, annsOf(rows, U), { range: [ds, rows.length], h: 320, slotMin: 1, frames: false, lastLine: true, pad: 12, layers: ['ann'], fit: [U(x.entry), U(x.sl)] });
+        LVR.push({ key, S, ch, fig: host.closest('figure'), t: rows[rows.length - 1].t, extra: true }); ZM.set(host.closest('figure'), { ch, len: rows.length, pad: 12, s: ds, e: rows.length, def: [ds, rows.length] });
       } catch (e) { console.error(e); host.innerHTML = '<div class="an-tvn">Không vẽ được khung ' + TFS[key][0] + ': ' + esc(e.message || String(e)) + '</div>'; }
     };
-    const rows = c.tf === '5m' ? F.m5.slice(-400) : F.m15.slice(-300), at = (t) => ixAt(rows, t);
-    const first = Math.min(c.sweep ? c.sweep.t : c.mss.t, c.zone.t, c.mss.fromT);
-    draw(tfk, rows, (r, U) => {
-      const a = c.parts.map((z) => ({ t: 'zone', x1: at(z.t), x2: 'end', y1: U(z.top), y2: U(z.bot), text: z.type, c: cz[z.type] || 'note', op: 0.16 }));
-      a.push({ t: 'zone', x1: at(c.zone.t), x2: 'end', y1: U(c.zone.top), y2: U(c.zone.bot), text: 'Vùng vào', c: 'info', op: 0.2, ce: true });
-      if (c.sweep) { const i = c.tf === '5m' ? at(c.sweep.t) : at(c.sweep.t); a.push({ t: 'label', at: i, text: 'Quét ' + (buy ? 'SSL' : 'BSL'), c: 'warn', pos: buy ? 'below' : 'above', lift: 4 }); a.push({ t: 'hline', y: U(c.sweep.p), x1: Math.max(0, i - 24), x2: i + 8, text: c.sweep.name, c: 'warn', below: buy }); }
-      a.push({ t: 'label', at: at(c.mss.t), text: c.mss.k + (buy ? ' ▲' : ' ▼'), c: buy ? 'bull' : 'bear', pos: buy ? 'above' : 'below', lift: 2 });
-      return a;
-    }, true, Math.min(rows.length, Math.max(70, rows.length - at(first) + 20)), ['ann', 'struct']); // chỉ vẽ vùng của chính combo cho đỡ rối; bật thêm lớp FVG/OB nếu muốn
-    const r1 = F.h1.slice(-200);
-    draw('h1', r1, (r, U) => (c.htf ? [{ t: 'zone', x1: ixAt(r, c.htf.t), x2: 'end', y1: U(c.htf.top), y2: U(c.htf.bot), text: c.htf.type + ' ' + c.htf.tf, c: cz[c.htf.type], op: 0.2 }] : []).concat([{ t: 'hline', y: U(c.entry), x1: r.length - 40, x2: 'end', text: 'Mức vào ' + f2(c.entry), c: 'info' }]), false, 100);
+    const lines = (n) => (rows, U) => [{ t: 'hline', y: U(x.entry), x1: Math.max(0, rows.length - n), x2: 'end', text: (x.state === 'pending' ? x.type : 'Entry') + ' ' + f2(x.entry), c: 'info', below: x.dir !== 'BUY' }, { t: 'hline', y: U(x.sl), x1: Math.max(0, rows.length - n), x2: 'end', text: 'SL ' + f2(x.sl), c: 'bear', below: x.dir === 'BUY' }];
+    draw('d1', F.d1.slice(-200), lines(30), 90); draw('m15', F.m15.slice(-300), lines(120), 130);
     zWire(card);
   }
-  /* gắn sự kiện cho phần combo sau mỗi lần dựng lại */
-  function comboWire(out, F, res, view) {
-    [].forEach.call(out.querySelectorAll('details.an-more'), (d) => {
-      const card = d.closest('.an-combo'), c = res.combo.list[+card.dataset.c]; let done = false;
-      const open = () => { if (done || !d.open) return; done = true; comboCharts(card, F, res, c); };
-      d.addEventListener('toggle', () => { if (d.open) { CBOPEN.add(d.dataset.id); open(); } else CBOPEN.delete(d.dataset.id); });
-      if (CBOPEN.has(d.dataset.id)) { d.open = true; open(); }
+  /* gắn sự kiện cho phần mô hình bổ sung sau mỗi lần dựng lại */
+  function modelsWire(out, F, res) {
+    [].forEach.call(out.querySelectorAll('.an-md details.an-more'), (d) => {
+      const card = d.closest('.an-md'), x = res.md.orders[+card.dataset.m]; let done = false;
+      const open = () => { if (done || !d.open) return; done = true; mdCharts(card, F, x); };
+      d.addEventListener('toggle', () => { if (d.open) { MDOPEN.add(d.dataset.id); open(); } else MDOPEN.delete(d.dataset.id); });
+      if (MDOPEN.has(d.dataset.id)) { d.open = true; open(); }
     });
-    const redo = () => { const box = $('#an-cb', out), all = $('#an-all', out); if (!box) return; for (let i = LVR.length - 1; i >= 0; i--) if (LVR[i].combo) { clearTimeout(LVR[i].timer); LVR.splice(i, 1); } box.outerHTML = comboHtml(res); if (all) all.innerHTML = allHtml(res); comboWire(out, F, res, view); };
-    const on = $('#an-cbon', out), min = $('#an-cbmin', out);
-    if (on) on.onchange = () => { cfgSet({ cbOn: on.checked }); redo(); };
-    if (min) min.onchange = () => { cfgSet({ cbMin: +min.value }); redo(); };
+    const on = $('#an-mdon', out);
+    if (on) on.onchange = () => { cfgSet({ mdOn: on.checked }); const box = $('#an-md', out), all = $('#an-all', out); for (let i = LVR.length - 1; i >= 0; i--) if (LVR[i].extra) { clearTimeout(LVR[i].timer); LVR.splice(i, 1); } box.outerHTML = modelsHtml(res); if (all) all.innerHTML = allHtml(res); modelsWire(out, F, res); };
   }
   function recentHtml(res) {
     if (!res.recent.length) return '';
@@ -370,7 +369,7 @@
       '<li><b>Mô hình Price Action (15m):</b> phá swing có lực (BOS) → giá quay lại retest mức vừa phá → nến từ chối (pin bar hoặc engulfing) tại mức đó. Entry là giá đóng cửa nến từ chối, SL ngoài râu nến.</li>' +
       '<li><b>Mục tiêu:</b> TP1 là thanh khoản gần nhất chưa bị phá (swing 15m/1H/4H, PDH/PDL, đỉnh/đáy phiên) cách ít nhất 1R; TP2 là thanh khoản xa hơn cách ít nhất 2R. Bắt buộc RR tới TP2 ≥ 1:2.</li>' +
       '<li><b>Chấm điểm 0–100:</b> HTF đồng thuận, chất lượng cú quét, displacement, vùng vào, RR, độ sâu hồi, killzone, trùng vùng 1H chưa lấp. Chỉ hiển thị khi ≥ 50 điểm; tối đa 3 lệnh.</li>' +
-      '<li><b>Gợi ý mở rộng (combo):</b> không đổi hai mô hình trên. Dò thêm 7 cấu trúc ghép trên 5m và 15m (xem bảng ở mục combo), chỉ giữ lệnh có RR TP2 ≥ 1:2 và còn chờ khớp hoặc vừa khớp. Thang điểm (trên 105, quy về 100): cùng hướng khung lớn 20, quét thanh khoản 15, vùng 1H/4H 15, displacement 15, hợp lưu vùng vào 15, discount/premium 5, khung giờ 10, RR 10; trừ 8 nếu mục tiêu không có thanh khoản rõ, trừ 10 nếu ngược bias. Tối đa 8 lệnh, lệnh trùng vùng được gộp; cũng đứng ngoài quanh tin mạnh.</li>' +
+      '<li><b>Mô hình bổ sung:</b> không đổi hai mô hình trên. Chỉ hiển thị hệ giao dịch đã công bố nào qua được kiểm chứng nhiều năm trên đúng mã đang xem (xem bảng ở mục Mô hình bổ sung); lệnh theo mức phá vỡ, nhiều lệnh không có TP cố định mà thoát theo quy tắc. Cũng đứng ngoài quanh tin mạnh.</li>' +
       '<li><b>Đứng ngoài quanh tin mạnh:</b> các tin USD mức High (lãi suất/FOMC, CPI, NFP, PCE, GDP, bán lẻ…) làm giá quét hai phía và spread nở rộng, nên công cụ không đưa lệnh từ trước tin 30–60 phút đến sau tin 30–90 phút (tin lãi suất/Fed có cửa sổ dài nhất). Áp dụng cho cả vàng và BTC.</li>' +
       '<li><b>Không phát tín hiệu</b> khi bias không rõ, ' + (SYM.closes ? 'thị trường vàng nghỉ cuối tuần, ' : '') + 'SL nhỏ hơn $' + (+A.cfg(SYM.id, RAW ? RAW.m15[RAW.m15.length - 1].c : 1).minRisk.toFixed(4)) + ' (gần bằng spread/phí), hoặc vào quá nông (đuổi giá).</li></ol></details></section>';
   }
@@ -439,10 +438,10 @@
       const off = offOf(), T = ASOF;
       if (!T && Date.now() - CAL.at > 1200000) await loadCal();
       const cut = (a, ms) => (T ? a.filter((x) => x.t + ms <= T) : a);
-      const F = { m15: shift(cut(T && BIG ? BIG : RAW.m15, 900000), off), h1: shift(cut(RAW.h1, 3600000), off), h4: shift(cut(RAW.h4, 14400000), off), m5: shift(cut(RAW.m5, 300000), off) };
+      const F = { m15: shift(cut(T && BIG ? BIG : RAW.m15, 900000), off), h1: shift(cut(RAW.h1, 3600000), off), h4: shift(cut(RAW.h4, 14400000).slice(-500), off), h4L: shift(cut(RAW.h4, 14400000), off), m5: shift(cut(RAW.m5, 300000), off), d1: shift(cut(RAW.d1, 86400000), off) };
       SNAP = keep ? snap() : null; LVR.forEach((c) => clearTimeout(c.timer)); LVR.length = 0; LV.off = off;
       const res = A.analyze(F, { mode: modeOf(), sym: SYM.id, events: T ? CAL.events.concat(A.fallbackEvents(T)) : A.mergeEvents(CAL.events, CAL.until, Date.now()), at: T || Date.now() }); res.n = F.m15.length; res.m15 = F.m15; OUT = { F, res };
-      try { res.combo = A.combos(F, { sym: SYM.id, news: res.news }); } catch (e) { console.error(e); res.combo = { list: [], held: 0, error: e.message || String(e) }; }
+      try { res.md = A.models({ m15: F.m15, h4: F.h4L, d1: F.d1 }, { sym: SYM.id, news: res.news, bias: res.bias }); } catch (e) { console.error(e); res.md = { list: [], orders: [], holding: [], notes: [], held: 0, error: e.message || String(e) }; }
       let h = T ? '<div class="callout tip"><p><b>Đang xem lại quá khứ:</b> đây là đúng những gì công cụ sẽ hiển thị tại thời điểm đó (chỉ dùng nến đã đóng).</p><div class="an-btns"><button type="button" class="btn pri" id="an-back">⟲ Quay về hiện tại</button></div></div>' : '';
       h += '<p class="an-meta">Nến 15m mới nhất đóng lúc <b>' + esc(A.tm(res.now)) + '</b> · giá <b>' + f2(res.price) + '</b>' + (off ? ' (đã cộng chênh lệch ' + (off > 0 ? '+' : '') + f2(off) + (cfgGet().autoOff !== false ? ', tự hiệu chỉnh theo giá spot' : '') + ')' : '') + '</p>';
       h += newsHtml(res);
@@ -450,10 +449,10 @@
       h += biasHtml(res);
       h += '<div id="an-all">' + allHtml(res) + '</div>';
       if (res.setups.length) res.setups.forEach((s, k) => (h += setupHtml(s, res, k))); else if (!res.closed) h += emptyHtml(res);
-      h += comboHtml(res) + recentHtml(res) + '<div id="an-bt"></div>' + methodHtml();
+      h += modelsHtml(res) + recentHtml(res) + '<div id="an-bt"></div>' + methodHtml();
       out.innerHTML = h;
       if (res.bias) { if (res.setups.length) res.setups.forEach((s, k) => charts($('[data-k="' + k + '"]', out), F, res, s)); else if (!res.closed) charts($('[data-k=none]', out), F, res, null); }
-      comboWire(out, F, res, view);
+      modelsWire(out, F, res);
       if (T) liveStop(); else liveStart(); const rb = $('#an-run', view); if (rb) rb.classList.remove('pulse');
       if (T) { const bk = $('#an-back', out); if (bk) bk.onclick = () => run(view, true, null); } else btBox(view);
       setStatus('Cập nhật xong lúc ' + new Date().toLocaleTimeString('vi-VN'), 'ok');
@@ -496,7 +495,7 @@
   ICT.analystPage = function (view) {
     const cfg = cfgGet(); SYM = A.SYMS[cfg.sym] || A.SYMS.XAUUSD;
     view.innerHTML = '<div class="page wide"><div class="crumb">Thực hành</div><h1>Phân tích &amp; gợi ý lệnh <span id="an-h1"></span></h1>' +
-      '<p class="lead">Công cụ đọc nến thật đa khung (4H → 1H → 15m), chỉ đưa ra lệnh BUY/SELL (kèm SL, TP) khi cấu trúc giá đáp ứng đủ điều kiện của mô hình ICT hoặc Price Action. Không đủ điều kiện thì nói rõ là đứng ngoài. Mục <b>Gợi ý mở rộng (combo)</b> bên dưới liệt kê thêm các cấu trúc ghép, có chấm điểm, để bạn tự đánh giá.</p>' +
+      '<p class="lead">Công cụ đọc nến thật đa khung (4H → 1H → 15m), chỉ đưa ra lệnh BUY/SELL (kèm SL, TP) khi cấu trúc giá đáp ứng đủ điều kiện của mô hình ICT hoặc Price Action. Không đủ điều kiện thì nói rõ là đứng ngoài. Mục <b>Mô hình bổ sung</b> bên dưới liệt kê lệnh của các hệ giao dịch đã công bố, chỉ những hệ đã qua kiểm chứng trên mã đang xem.</p>' +
       '<div class="callout warn"><p>Đây là công cụ <b>giáo dục</b>: áp dụng quy tắc cố định lên dữ liệu giá để bạn thấy cách đọc cấu trúc, không phải lời khuyên đầu tư và không biết tình hình tài chính của bạn. Giao dịch đòn bẩy có thể mất toàn bộ vốn. Luôn tự kiểm tra lại trên biểu đồ của broker trước khi vào lệnh.</p></div>' +
       '<div class="an-bar"><label>Mã <select id="an-sym">' + Object.keys(A.SYMS).map((k) => '<option value="' + k + '">' + A.SYMS[k].name + ' · ' + A.SYMS[k].label + '</option>').join('') + '</select></label><button type="button" class="btn pri" id="an-run">⟳ Phân tích ngay</button>' +
       '<label class="an-auto" title="Khi nến 15m đóng, tự chạy lại phân tích (giữ nguyên zoom và các lớp bạn đã bật). Không chạy nếu bạn vừa thao tác trong 45 giây."><input type="checkbox" id="an-auto"> Tự cập nhật khi nến 15m đóng</label>' +
@@ -508,7 +507,7 @@
       $('#an-sym', view).value = SYM.id; $('#an-mode', view).value = modeOf(); $('#an-h1', view).textContent = SYM.name; $('#an-offbox', view).style.display = SYM.id === 'XAUUSD' ? '' : 'none';
       $('#an-note', view).textContent = SYM.id === 'XAUUSD' ? 'Dữ liệu: cặp PAXG/USDT trên Binance (token vàng, bám sát XAUUSD nhưng chênh vài đô và giao dịch cả cuối tuần). Nhập chênh lệch với broker của bạn để giá khớp.'
         : 'Dữ liệu: cặp ' + SYM.src + ' trên Binance, giao dịch 24/7 nên không có ngày nghỉ. Giá có thể lệch nhẹ so với sàn bạn dùng. Phiên Á/London/New York và killzone vẫn tính theo giờ New York như với vàng, nhưng thanh khoản crypto ít phụ thuộc vào các phiên này hơn nên tín hiệu có thể kém ổn định hơn vàng: hãy xem phần Kiểm chứng bên dưới trước khi tin kết quả.';
-      if (SYM.bt) $('#an-note', view).textContent += ' ' + SYM.bt + ' (trên chính dữ liệu dùng để thiết kế quy tắc, mẫu nhỏ, chưa phải bằng chứng có lãi).';
+      if (SYM.bt) $('#an-note', view).textContent += ' ' + SYM.bt + ' Kết quả quá khứ không đảm bảo tương lai.';
     };
     symUi(); VIEW = view; $('#an-auto', view).checked = cfg.auto !== false; $('#an-auto', view).onchange = (e) => cfgSet({ auto: e.target.checked });
     ['pointerdown', 'wheel', 'keydown', 'touchstart'].forEach((ev) => view.addEventListener(ev, () => (UI.t = Date.now()), { capture: true, passive: true }));
@@ -527,10 +526,10 @@
       const ao = e.target.closest('button[data-asof]'); if (ao) { window.scrollTo({ top: 0, behavior: 'smooth' }); run(view, true, +ao.dataset.asof); return; }
       const zb = e.target.closest('.zm button'); if (zb) { zoom(zb.closest('figure'), zb.dataset.z === 'in' ? 0.7 : zb.dataset.z === 'out' ? 1.45 : 0); return; }
       const sw = e.target.closest('.tvsw button'); if (sw) { const fg = sw.closest('figure'); tvSwitch(fg, fg.dataset.f, sw.dataset.v === 'tv'); return; }
-      const go = e.target.closest('a[data-go]'); if (go) { e.preventDefault(); const g = go.dataset.go, t = $(g[0] === 'c' ? '.an-card[data-c="' + g.slice(1) + '"]' : '.an-card[data-k="' + g.slice(1) + '"]', view); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
-      const b = e.target.closest('button[data-a]'); if (!b || !OUT) return; const card = b.closest('.an-card'), k = card.dataset.k, s = card.dataset.c != null ? OUT.res.combo.list[+card.dataset.c] : k === 'none' ? null : OUT.res.setups[+k];
+      const go = e.target.closest('a[data-go]'); if (go) { e.preventDefault(); const g = go.dataset.go, t = $(g[0] === 'm' ? '.an-card[data-m="' + g.slice(1) + '"]' : '.an-card[data-k="' + g.slice(1) + '"]', view); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+      const b = e.target.closest('button[data-a]'); if (!b || !OUT) return; const card = b.closest('.an-card'), k = card.dataset.k, md = card.dataset.m != null ? OUT.res.md.orders[+card.dataset.m] : null, s = md || k === 'none' ? md : OUT.res.setups[+k];
       if (b.dataset.a === 'png') { b.disabled = true; exportPng(card, s, OUT.res).catch((er) => alert('Không xuất được ảnh: ' + er.message)).finally(() => (b.disabled = false)); }
-      else if (b.dataset.a === 'copy') { const t = planText(s, OUT.res); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).catch(() => { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (er) { /* bỏ qua */ } ta.remove(); }).finally(() => { const o = b.textContent; b.textContent = '✔ Đã sao chép'; setTimeout(() => (b.textContent = o), 1600); }); }
+      else if (b.dataset.a === 'copy') { const t = md ? mdPlan(md) : planText(s, OUT.res); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).catch(() => { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (er) { /* bỏ qua */ } ta.remove(); }).finally(() => { const o = b.textContent; b.textContent = '✔ Đã sao chép'; setTimeout(() => (b.textContent = o), 1600); }); }
     });
     ICT.live.push(() => { btRun++; liveStop(); LVR.length = 0; });
     run(view, false);

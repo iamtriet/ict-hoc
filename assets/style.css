@@ -232,6 +232,6 @@ abbr.ab:hover, abbr.ab:focus-visible { border-bottom-color: var(--accent); color
 .lpl { stroke-width: 1; stroke-dasharray: 1 3; } .lpl.u { stroke: var(--tvup, var(--bull)); } .lpl.d { stroke: var(--tvdn, var(--bear)); } .lpg.u { fill: var(--tvup, var(--bull)); } .lpg.d { fill: var(--tvdn, var(--bear)); }
 .an-live { font: 600 13px var(--mono); color: var(--faint); display: inline-flex; align-items: center; gap: 6px; } .an-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); display: inline-block; } .an-live.on i { background: var(--bull); animation: sypulse 1.4s ease-in-out infinite; } .an-live.on b { color: var(--fg); } .an-live.up b { color: var(--bull); } .an-live.dn b { color: var(--bear); }
 #an-run.pulse { animation: sypulse 1s ease-in-out infinite; }
-.an-combo { border-left-style: dashed !important; } .an-ck b em { float: right; font-style: normal; font: 600 12px var(--mono); color: var(--mute); }
+.an-md { border-left-style: dashed !important; } .an-mdn { font-size: 13.5px; color: var(--mute); } .an-mdhead h3 { margin: 12px 0 6px; font-size: 15px; } .an-ck b em { float: right; font-style: normal; font: 600 12px var(--mono); color: var(--mute); }
 .an-bt1 { font-size: 13.5px; color: var(--warn); margin: 6px 0 10px; } .an-cbctl { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 8px 0; font-size: 13.5px; }
-.an-more { margin-top: 10px; } .an-more summary, .an-cbhead summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+.an-more { margin-top: 10px; } .an-more summary, .an-mdhead summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
