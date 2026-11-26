@@ -7,7 +7,7 @@ on:
   push:
     # đổi mã của bot thì chạy lại ngay bằng mã mới (lượt đang chạy bị thay thế)
     branches: [main]
-    paths: ['.github/workflows/alerts.yml', 'scripts/notify.js', 'scripts/watch.js', 'scripts/chart.js', 'scripts/shot.js', 'scripts/render.html', 'scripts/test-request.txt', 'assets/engine.js', 'assets/analyst-core.js', 'assets/analyst.js', 'assets/style.css']
+    paths: ['.github/workflows/alerts.yml', 'scripts/notify.js', 'scripts/watch.js', 'scripts/chart.js', 'scripts/shot.js', 'scripts/render.html', 'scripts/test-request.txt', 'scripts/message.js', 'assets/analyst-models.js', 'assets/engine.js', 'assets/analyst-core.js', 'assets/analyst.js', 'assets/style.css']
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
@@ -84,7 +84,7 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          curl -s -o /dev/null "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"             --data-urlencode "chat_id=${TG_CHAT_ID}"             --data-urlencode "text=🔴 Bot XAUUSD: lượt chạy trên GitHub Actions bị lỗi. Chi tiết: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} . Cron mỗi giờ sẽ thử khởi động lại; nếu không thấy tin báo sống sáng mai, hãy vào Actions bấm Run workflow." || true
+          curl -s -o /dev/null "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"             --data-urlencode "chat_id=${TG_CHAT_ID}"             --data-urlencode "text=🔴 Bot lỗi, cron sẽ tự khởi động lại. ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
 
       - name: Tự gọi lượt kế tiếp
         if: success()

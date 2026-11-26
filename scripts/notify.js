@@ -13,8 +13,8 @@ const STATE = path.join(ROOT, '.state', 'state.json');
 
 /* ---- nạp lõi phân tích ---- */
 const win = {}; win.window = win; win.console = console; vm.createContext(win);
-['assets/engine.js', 'assets/analyst-core.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
-const A = win.ICT.analyst;
+['assets/engine.js', 'assets/analyst-core.js', 'assets/analyst-models.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
+const A = win.ICT.analyst, msg = require('./message.js')(A);
 const SYMBOLS = (env.SYMBOLS || 'XAUUSD,BTCUSD').split(/[\s,]+/).map((x) => x.toUpperCase()).filter((x) => A.SYMS[x]);
 if (!SYMBOLS.length) SYMBOLS.push('XAUUSD');
 let f2 = (x) => (+x).toFixed(2); // số lẻ đổi theo mã đang xử lý
@@ -53,19 +53,6 @@ async function tg(method, body, isForm) {
   const j = await r.json().catch(() => ({})); if (!j.ok) throw new Error('Telegram ' + method + ': ' + (j.description || r.status));
 }
 async function png(svg) { try { const { Resvg } = require('@resvg/resvg-js'); return new Resvg(svg, { fitTo: { mode: 'width', value: 1200 }, font: { loadSystemFonts: true, defaultFontFamily: 'DejaVu Sans' } }).render().asPng(); } catch (e) { console.log('Không dựng được ảnh:', e.message); return null; } }
-
-function messages(s, cfg) {
-  const buy = s.dir === 'BUY', ic = buy ? '🟢' : '🔴', stt = { pending: 'Chờ giá hồi về vùng vào (đặt lệnh limit)', inzone: 'Giá đang chạm vùng vào, chờ phản ứng', active: 'Nến xác nhận vừa đóng: có thể vào' }[s.state] || s.state;
-  const foot = cfg.closes ? 'dữ liệu PAXG quy đổi gần đúng về spot' : 'dữ liệu ' + cfg.src + ' của Binance';
-  const cap = ic + ' <b>' + (buy ? 'MUA' : 'BÁN') + ' ' + cfg.name + '</b> · ' + esc(s.title) + '\nĐiểm <b>' + s.score + '/100 (' + s.grade + ')</b>\n<b>Entry</b> ' + f2(s.entry) + ' · <b>SL</b> ' + f2(s.sl) + '\n<b>TP1</b> ' + f2(s.tp1) + ' (1:' + s.rr1 + ') · <b>TP2</b> ' + f2(s.tp2) + ' (1:' + s.rr2 + ')';
-  const body = ic + ' <b>' + (buy ? 'MUA' : 'BÁN') + ' ' + cfg.name + ' — ' + esc(s.title) + '</b>\n' + esc(stt) + '\n\n' +
-    '<b>Entry:</b> ' + f2(s.entry) + (s.zone ? ' (vùng ' + f2(s.zone.bot) + ' – ' + f2(s.zone.top) + ')' : '') + '\n<b>SL:</b> ' + f2(s.sl) + ' (rủi ro $' + f2(s.risk) + cfg.unit + ')\n<b>TP1:</b> ' + f2(s.tp1) + ' · 1:' + s.rr1 + ' — ' + esc(s.tp1n) + '\n<b>TP2:</b> ' + f2(s.tp2) + ' · 1:' + s.rr2 + ' — ' + esc(s.tp2n) + '\n\n' +
-    '<b>Phân tích:</b>\n' + s.story.map((t, i) => t.replace(/<(?!\/?b>)[^>]*>/g, '')).join('\n\n') + '\n\n' +
-    '<b>Vô hiệu khi:</b>\n' + s.invalid.map((t) => '• ' + esc(t)).join('\n') + '\n\n' +
-    '<b>Quản lý:</b> chốt 50% ở TP1 rồi dời SL về hòa vốn; phần còn lại giữ tới TP2.\n\n' +
-    '🔗 <a href="' + SITE + '">Mở trang Phân tích để xem biểu đồ tương tác</a>' + (cfg.id === 'XAUUSD' ? '' : ' (chọn mã ' + cfg.name + ')') + '\n<i>Nội dung giáo dục từ ' + foot + ', không phải lời khuyên đầu tư. Hãy tự kiểm tra trên biểu đồ broker.</i>';
-  return { cap, body };
-}
 
 /* ---- ảnh setup: album 4 khung (4H, 1H, 15m, 5m) vẽ giống trang web; không dựng được thì gửi một ảnh 15m đơn giản ---- */
 async function album(job) {
@@ -109,9 +96,9 @@ async function sendTest(r, st) {
   const clean = (m) => (env.TG_BOT_TOKEN ? String(m).split(env.TG_BOT_TOKEN).join('***') : String(m));
   try {
     if (!r) throw new Error('không tìm được setup mẫu để vẽ');
-    const how = await sendImages(r.sample, '🧪 <b>Ảnh thử ' + r.id + '</b>: mẫu ảnh đa khung sẽ đi kèm mỗi setup. Không phải tín hiệu.');
+    const how = await sendImages(r.sample, ('🧪 <b>TIN THỬ, không phải tín hiệu</b>\n' + msg.setup(r.sample.s, { cfg: r.sample.cfg, res: r.sample.res, events: EV, site: SITE })).slice(0, 4000));
     status.result = how.mode; if (how.note) status.detail = clean(how.note);
-    if (how.mode !== 'album') await say('⚠️ Ảnh thử không gửi được dạng album 4 khung, đã dùng ' + (how.mode === 'photo' ? 'ảnh đơn' : 'tin chữ') + '. Lý do: ' + esc(clean(how.note || 'không rõ')));
+    if (how.mode !== 'album') await say('⚠️ Không dựng được album 4 khung, đã dùng ' + (how.mode === 'photo' ? 'ảnh đơn' : 'tin chữ') + ': ' + esc(clean(how.note || 'không rõ')));
   } catch (e) { status.result = 'fail'; status.detail = clean(e.message); await say('⚠️ Không gửi được ảnh thử: ' + esc(status.detail)); }
   console.log('::notice title=Ảnh thử::' + status.result + (status.detail ? ' · ' + status.detail : ''));
   if (REQ && !DRY) { // ghi kết quả lên nhánh data (không chứa thông tin riêng) để kiểm tra được từ ngoài
@@ -143,8 +130,6 @@ async function getEvents(st) {
 /* ---- tin hệ thống: báo sống mỗi ngày, báo lỗi dữ liệu, báo chuỗi quét bị đứt ---- */
 const HB_HOUR = env.HB_HOUR !== undefined && env.HB_HOUR !== '' ? +env.HB_HOUR : 0; // giờ UTC gửi tin báo sống (0 = 07:00 giờ Việt Nam)
 const vn = (t) => { const d = new Date((t || Date.now()) + 7 * 3600000); return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
-const hm = (t) => { const d = new Date(t + 7 * 3600000); return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
-const nyh = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 const SES = env.SESSIONS === 'off' ? [] : (env.SESSIONS || 'asia,london,ny').toLowerCase().split(/[\s,]+/).filter(Boolean); // phiên cần báo: asia, london, ny, lc, pm
 async function say(text) {
   if (DRY) { console.log('[tin hệ thống] ' + text.replace(/<[^>]+>/g, '')); return; }
@@ -157,10 +142,10 @@ async function scan(id, st) {
   let d;
   try { d = await load(cfg); } catch (e) {
     st.fails[id] = (st.fails[id] || 0) + 1; console.log('::warning::[' + id + '] lỗi dữ liệu lần ' + st.fails[id] + ': ' + e.message);
-    if (st.fails[id] >= 3 && !st.alerts[id]) { st.alerts[id] = true; await say('🔴 <b>Bot không lấy được dữ liệu giá ' + id + '</b> ' + st.fails[id] + ' lần liên tiếp (~' + st.fails[id] * 5 + ' phút). Bot vẫn thử lại mỗi 5 phút và sẽ báo khi hồi phục.\nLỗi: ' + esc(e.message)); }
+    if (st.fails[id] >= 3 && !st.alerts[id]) { st.alerts[id] = true; await say('🔴 <b>Không lấy được giá ' + id + '</b> (' + st.fails[id] + ' lần, bot đang thử lại)\n' + esc(e.message)); }
     return { id, fail: true };
   }
-  if (st.alerts[id]) await say('✅ <b>Bot đã lấy lại được dữ liệu giá ' + id + '</b> sau ' + st.fails[id] + ' lần lỗi. Quét bình thường trở lại.');
+  if (st.alerts[id]) await say('✅ <b>Đã lấy lại được giá ' + id + '</b>');
   st.fails[id] = 0; st.alerts[id] = false;
   console.log('[' + id + '] nguồn dữ liệu:', d.src, '· 15m', d.m15.length, '· 1H', d.h1.length, '· 4H', d.h4.length);
   if (env.ASOF) { const T = +env.ASOF, cut = (a, ms) => a.filter((x) => x.t + ms <= T); d.m15 = cut(d.m15, 900000); d.h1 = cut(d.h1, 3600000); d.h4 = cut(d.h4, 14400000); d.m5 = cut(d.m5 || [], 300000); console.log('Chế độ thử: dữ liệu cắt tại', new Date(T).toISOString()); }
@@ -171,7 +156,7 @@ async function scan(id, st) {
   const ageMin = (Date.now() - res.now) / 60000; console.log('Nến 15m cuối đóng lúc', A.tm(res.now - 900000), '· cách đây', Math.round(ageMin), 'phút · chênh lệch giá', off);
   console.log('Bias:', res.bias ? res.bias.text : '–', '· setup:', res.setups.length, '· ghi chú:', res.notes.filter(Boolean).join(' | '));
   if (res.held && res.held.length) console.log('[' + id + '] giữ lại ' + res.held.length + ' setup vì đang quanh giờ tin mạnh: ' + res.held.map((x) => x.dir + ' ' + x.score).join(', '));
-  const out = { id, price: res.price, bias: res.bias ? res.bias.text : 'chưa đủ dữ liệu', ageMin, setups: res.setups.length, src: d.src, dec: cfg.dec };
+  const out = { id, price: res.price, dir: res.bias ? res.bias.dir : 0, ageMin, setups: res.setups.length, src: d.src, dec: cfg.dec };
   if (TEST || REQ) { const label = 'ẢNH THỬ: setup đang theo dõi hoặc đã qua, không phải tín hiệu mới', demo = res.setups[0] || res.recent[0];
     if (demo) out.sample = job(demo, label); else { const base = job(null, label), p = pastDemo(base.F, base.opt); if (p) out.sample = Object.assign(base, { res: p.res, s: p.s, F: p.F }); } }
   if (ageMin > 45 && !FORCE) { console.log('Dữ liệu cũ hơn 45 phút (thị trường nghỉ hoặc nguồn chậm): bỏ qua.'); return out; }
@@ -182,10 +167,9 @@ async function scan(id, st) {
     if (s.model === 'PA' && F.m15.length - 1 - s.ready > 1 && !FORCE) continue;
     const key = id === 'XAUUSD' ? s.id : id + ':' + s.id;
     if (st.sent[key] && !FORCE) continue;
-    const m = messages(s, cfg);
-    if (DRY) console.log('\n' + m.cap.replace(/<[^>]+>/g, '') + '\n----\n' + m.body.replace(/<[^>]+>/g, ''));
-    await sendImages(job(s), m.cap);
-    if (!DRY) await tg('sendMessage', { chat_id: env.TG_CHAT_ID, parse_mode: 'HTML', text: m.body, disable_web_page_preview: true });
+    const text = msg.setup(s, { cfg, res, events: EV, site: SITE }); // một tin duy nhất: chú thích đi cùng album ảnh
+    if (DRY) console.log('\n' + msg.plain(text));
+    await sendImages(job(s), text);
     st.sent[key] = Date.now(); sent++; console.log('Đã xử lý', key, s.dir, s.score);
   }
   console.log('[' + id + '] số thông báo mới:', sent);
@@ -196,27 +180,20 @@ async function main(st) {
   const first = env.LOOP_N === undefined || env.LOOP_N === '1', now0 = Date.now();
   if (!DRY && (!env.TG_BOT_TOKEN || !env.TG_CHAT_ID)) { console.log('::error::Thiếu TG_BOT_TOKEN hoặc TG_CHAT_ID trong GitHub Secrets.'); process.exit(1); }
   // chuỗi quét bị đứt: lượt đầu của một lần chạy mà lần quét trước đã quá lâu
-  if (first && st.last && (now0 - st.last) / 60000 > 20) await say('⚠️ <b>Bot đã ngừng quét khoảng ' + Math.round((now0 - st.last) / 60000) + ' phút</b> (từ ' + vn(st.last) + ' giờ VN) và vừa được khởi động lại. Những setup xuất hiện trong khoảng đó có thể đã bị bỏ lỡ.');
+  if (first && st.last && (now0 - st.last) / 60000 > 20) await say('⚠️ <b>Bot ngừng quét ~' + Math.round((now0 - st.last) / 60000) + ' phút</b> (từ ' + vn(st.last) + '), đã chạy lại. Có thể lỡ setup trong khoảng đó.');
   st.last = now0;
   EV = await getEvents(st);
   REQ = testRequest(); if (REQ === st.testReq) REQ = null;
   const rs = []; let err = null;
   for (const id of SYMBOLS) { try { rs.push(await scan(id, st)); } catch (e) { err = err || e; console.log('::warning::[' + id + '] ' + (e && e.message ? e.message : e)); } }
   const ok = rs.filter((r) => !r.fail);
-  const newsLine = () => {
-    const nw = Date.now(), ns = A.newsState(EV, nw), x = ns.current.concat(ns.next).slice(0, 3);
-    if (!x.length) return '\n🗓 Không có tin mạnh của USD trong 36 giờ tới';
-    return '\n🗓 Tin mạnh: ' + x.map((e) => esc(e.label) + ' ' + vn(e.t) + ' VN' + (e.t - nw <= 0 ? ' (đang trong vùng tin, bot đứng ngoài)' : ' (còn ' + (e.mins >= 90 ? Math.round(e.mins / 60) + ' giờ' : e.mins + ' phút') + ')')).join('; ');
-  };
-  const sesLine = () => { if (!SES.length) return ''; const x = A.sessionsNext(Date.now(), 3, SES); return x.length ? '\n🕒 Phiên sắp tới (giờ VN): ' + x.map((e) => e.n + ' ' + vn(e.t)).join('; ') : ''; };
-  const L = (r) => r.id + ' ≈ ' + (+r.price).toFixed(r.dec) + ' · ' + esc(r.bias) + (r.ageMin > 45 ? ' (thị trường nghỉ/dữ liệu chậm)' : '');
-  if (TEST) await tg('sendMessage', { chat_id: env.TG_CHAT_ID, parse_mode: 'HTML', text: '✅ <b>Kết nối thành công.</b>\nBot sẽ gửi tin khi có setup đủ điều kiện (điểm ≥ ' + MIN + ').\nMã đang quét: ' + SYMBOLS.join(', ') + '\n' + ok.map((r) => L(r) + ' · ' + r.setups + ' setup').join('\n') });
+  if (TEST) await tg('sendMessage', { chat_id: env.TG_CHAT_ID, parse_mode: 'HTML', text: msg.connected(ok, MIN) });
   if (TEST || REQ) await sendTest(ok.find((x) => x.sample), st);
   // báo sống: mỗi ngày một tin, gửi ở lượt quét đầu tiên sau HB_HOUR giờ UTC (kể cả khi thị trường nghỉ)
   const today = new Date().toISOString().slice(0, 10);
   if (ok.length && !env.ASOF && new Date().getUTCHours() >= HB_HOUR && st.hb !== today) {
     const n24 = Object.keys(st.sent).filter((k) => st.sent[k] >= Date.now() - 86400000).length;
-    await say('💚 <b>Bot đang chạy bình thường</b> · ' + vn() + ' giờ VN\n' + ok.map(L).join('\n') + '\nSetup đã gửi trong 24 giờ qua: ' + n24 + newsLine() + sesLine() + '\n<i>Không có tin setup nghĩa là chưa có setup đủ điều kiện, không phải bot hỏng.</i>');
+    await say(msg.heartbeat(ok, n24, EV, SES.length ? A.sessionsNext(Date.now(), 3, SES) : [], Date.now()));
     if (!DRY) st.hb = today;
   }
   // báo giờ bắt đầu phiên quan trọng (Asia / London / New York...): gửi ở lượt quét đầu tiên trong 15 phút sau giờ mở phiên
@@ -224,11 +201,7 @@ async function main(st) {
     const nw = +env.SESSION_AT || Date.now(); st.ses = st.ses || {}; // SESSION_AT chỉ để thử
     for (const x of A.sessionsDue(nw, 15, SES)) {
       if (st.ses[x.key] && !FORCE) continue;
-      const evs = EV.filter((e) => (!e.country || e.country === 'USD') && e.impact === 'High' && e.t >= x.t && e.t <= x.end).sort((a, b) => a.t - b.t);
-      await say('🕒 <b>' + x.n + ' bắt đầu</b>\n' + hm(x.t) + ' – ' + hm(x.end) + ' giờ VN (' + nyh(x.s) + ' – ' + nyh(x.e % 1440) + ' giờ New York)\n' + esc(x.tip) +
-        (ok.length ? '\n\n' + ok.map(L).join('\n') : '') +
-        (evs.length ? '\n🗓 Tin mạnh trong phiên: ' + evs.map((e) => esc(A.newsLabel(e.title)) + ' ' + hm(e.t) + ' VN (bot đứng ngoài quanh giờ này)').join('; ') : '') +
-        '\n<i>Chỉ báo giờ phiên, không phải tín hiệu vào lệnh. Bot vẫn chỉ gửi setup khi đủ điều kiện.</i>');
+      await say(msg.session(x, ok, EV));
       if (!DRY) st.ses[x.key] = nw;
     }
     for (const k of Object.keys(st.ses)) if (st.ses[k] < nw - 3 * 86400000) delete st.ses[k];

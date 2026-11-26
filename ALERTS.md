@@ -2,7 +2,7 @@
 
 GitHub Actions quét thị trường 24/7: ngay khi nến 15m đóng (nghe WebSocket Binance, trễ vài giây) và dự phòng 5 phút một lần (một lượt chạy giữ máy ~5h40 rồi tự gọi lượt kế tiếp; cron mỗi giờ chỉ là lưới an toàn vì cron của GitHub hay trễ hoặc bỏ lượt), dùng đúng lõi phân tích của trang web
 (`assets/analyst-core.js`). Chỉ khi có setup đạt điều kiện và điểm ≥ 55, bot gửi cho bạn một **album 4 ảnh** (4H, 1H, 15m, 5m)
-vẽ giống trang Phân tích (điểm quét, MSS/BOS, FVG, Order Block, hộp Entry/SL/TP) và một tin chữ phân tích phản ứng giá. Mỗi setup chỉ được gửi một lần. Không có setup thì bot im lặng.
+vẽ giống trang Phân tích (điểm quét, MSS/BOS, FVG, Order Block, hộp Entry/SL/TP), kèm chú thích ngắn: lệnh cần đặt, SL/TP, bối cảnh 4H/1H, điều kiện đạt và chưa đạt, khi nào hủy. Mỗi setup chỉ được gửi một lần. Không có setup thì bot im lặng.
 
 Ảnh được vẽ bằng Chrome ẩn trên máy chạy GitHub (`scripts/shot.js` mở `scripts/render.html`). Nếu không dựng được, bot gửi một ảnh 15m đơn giản như trước để không bỏ lỡ tín hiệu. Đặt biến `SHOT` = `off` nếu chỉ muốn ảnh đơn giản.
 

@@ -102,6 +102,26 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
     ok('Ảnh Telegram: dựng đủ 4 khung (' + Math.round(imgs.reduce((a, x) => a + x.png.length, 0) / 1024) + ' KB)');
     if (process.env.GITHUB_ACTIONS) console.log('::notice title=Ảnh Telegram::dựng đủ 4 khung trên máy GitHub (' + imgs.map((x) => x.key + ' ' + Math.round(x.png.length / 1024) + ' KB').join(', ') + ')'); // để xem được kết quả mà không cần mở nhật ký
   } catch (e) { fail('ảnh Telegram: ' + e.message); }
+  // tin Telegram: một chú thích ngắn cho mỗi setup, đủ mức giá, không vượt giới hạn của Telegram, thẻ HTML đóng đúng
+  try {
+    ['assets/analyst-models.js'].forEach((f) => { if (!A.CORE_TESTS) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }); });
+    const msg = require('./message.js')(A); let n = 0, longest = 0;
+    for (const id of ids) {
+      const d = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', id + '.json'), 'utf8')), F = { m15: rows(d.m15), h1: rows(d.h1), h4: rows(d.h4) };
+      for (let cut = 0; cut <= 300; cut += 6) {
+        const T = F.m15[F.m15.length - 1 - cut].t + 900000, up = (a, ms) => a.filter((x) => x.t + ms <= T), res = A.analyze({ m15: up(F.m15, 900000), h1: up(F.h1, 3600000), h4: up(F.h4, 14400000) }, { minScore: 0, sym: id, news: false });
+        for (const s of res.setups.concat(res.recent)) {
+          const t = msg.setup(s, { cfg: A.SYMS[id], res, events: [{ t: T + 3600000, title: 'CPI m/m', impact: 'High', country: 'USD' }], now: T, site: 'https://example.test/#analyst' }), p = msg.plain(t); n++; longest = Math.max(longest, p.length);
+          if (p.length > 1024) throw new Error('tin quá dài (' + p.length + ' ký tự)');
+          if ([s.entry, s.sl, s.tp1, s.tp2].some((v) => p.indexOf((+v).toFixed(A.SYMS[id].dec)) < 0)) throw new Error('tin thiếu mức giá: ' + p);
+          if (/undefined|NaN|null/.test(p)) throw new Error('tin có giá trị lỗi: ' + p);
+          if ((t.match(/<b>/g) || []).length !== (t.match(/<\/b>/g) || []).length || /<(?!\/?b>|a href="|\/a>)/.test(t)) throw new Error('thẻ HTML không hợp lệ: ' + t);
+        }
+      }
+    }
+    if (!n) throw new Error('không có setup mẫu');
+    ok('Tin Telegram: ' + n + ' mẫu hợp lệ, dài nhất ' + longest + ' ký tự');
+  } catch (e) { fail('tin Telegram: ' + e.message); }
   // lịch tin: cửa sổ đứng ngoài đúng theo từng loại tin
   const fb = A.fallbackEvents(Date.UTC(2026, 10, 25)), has = (t, ti) => fb.some((e) => e.t === t && e.title === ti);
   if (!has(Date.UTC(2026, 11, 4, 13, 30), 'Non-Farm Employment Change') || !has(Date.UTC(2026, 11, 9, 19, 0), 'Federal Funds Rate')) fail('lịch dựng sẵn sai ngày NFP/FOMC');
