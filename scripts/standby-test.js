@@ -26,6 +26,13 @@ module.exports = async function (win) {
   const noDate = standby(async (m, b) => { const r = server.call(m, b); if (m === 'getChat' && r.pinned_message) delete r.pinned_message.edit_date; return r; }, 1), before = mem.id;
   server.state.now += 60; await noDate.beat(mem, ['XAUUSD'], clock());
   must(mem.id !== before && (await fresh()) === 'XAUUSD', 'không có thời điểm sửa thì phải thay bằng tin mới');
+  /* nhiều máy chung bot: tin ghim ghi tên máy; máy khác chỉ nhận sau khi máy đang gửi ngừng, rồi máy cũ phải đứng chờ */
+  const other = standby(tg, 1), mine = {}, theirs = {};
+  server.state.now += 3600; await sb.beat(mine, ['XAUUSD'], clock(), 'PC-NHA');
+  let p = await other.read(clock()); must(p.device === 'PC-NHA' && p.symbols.join() === 'XAUUSD' && p.age < standby.PEER, 'tin ghim phải ghi tên máy: ' + JSON.stringify(p));
+  server.state.now += standby.PEER + 60; p = await other.read(clock()); must(p.age >= standby.PEER && p.age < standby.FRESH, 'máy khác phải nhận trước khi bot web gửi thay');
+  await other.beat(theirs, ['XAUUSD'], clock(), 'LAPTOP'); p = await sb.read(clock()); must(p.device === 'LAPTOP' && p.age === 0, 'máy dự phòng nhận thì tin ghim đổi sang máy đó: ' + JSON.stringify(p));
+  must(standby.PEER < standby.FRESH && /“LAPTOP”/.test(msg.resumed(['XAUUSD'], null, 'LAPTOP')), 'tin bắt đầu gửi phải ghi tên máy');
   /* tin từ máy MT5: có mức nhập sàn đã tính chênh mua/bán, ghi rõ nguồn; tin bot web không đổi */
   const cfg = Object.assign({}, A.SYMS.XAUUSD, { dec: 3, src: 'MT5 XAUUSDm' });
   const s = { model: 'ICT', dir: 'BUY', d: 1, state: 'pending', score: 70, grade: 'A', entry: 100, sl: 98, tp1: 103, tp2: 105, rr1: 1.5, rr2: 2.5, risk: 2, t0: 0, checks: [{ ok: true, label: 'HTF đồng thuận' }] };

@@ -102,7 +102,7 @@ module.exports = function (A) {
 
   /* chuyển qua lại giữa máy MT5 và bot web (scripts/standby.js) */
   const takeover = (ids) => '☁️ <b>Máy MT5 không gửi tin quá 20 phút</b>: bot web gửi thay cho ' + ids.join(', ') + ' (giá Deriv / Coinbase, lệch ít nhiều so với MT5). Lệnh máy đã gửi không được theo dõi tiếp ở đây.';
-  const resumed = (ids, minutes) => (minutes == null ? '🖥 <b>Bắt đầu gửi tin từ máy MT5</b> cho ' + ids.join(', ') + ' (giá sàn của bạn). Bot web im lặng khi máy đang chạy.' : '🖥 <b>Máy MT5 gửi tin trở lại</b> cho ' + ids.join(', ') + ' (sau khoảng ' + minutes + ' phút).');
+  const resumed = (ids, minutes, device) => { const who = device ? ' “' + esc(device) + '”' : ''; return minutes == null ? '🖥 <b>Bắt đầu gửi tin từ máy MT5' + who + '</b> cho ' + ids.join(', ') + ' (giá sàn của bạn). Bot web và máy khác im lặng khi máy này đang chạy.' : '🖥 <b>Máy MT5' + who + ' gửi tin trở lại</b> cho ' + ids.join(', ') + ' (sau khoảng ' + minutes + ' phút).'; };
 
   function session(x, rows, events) {
     const ev = (events || []).filter((e) => (!e.country || e.country === 'USD') && e.impact === 'High' && e.t >= x.t && e.t <= x.end).sort((a, b) => a.t - b.t);

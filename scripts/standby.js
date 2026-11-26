@@ -1,26 +1,29 @@
 /* Tự chuyển dự phòng giữa bot chạy trên máy (giá MT5) và bot GitHub (giá web).
    Máy cập nhật một tin ghim trong cuộc trò chuyện Telegram sau mỗi lượt quét; bot GitHub đọc tin ghim đó: còn mới thì im lặng
-   cho các mã máy đang lo, quá hạn thì gửi thay. Thời điểm lấy từ máy chủ Telegram (date / edit_date), nên đồng hồ máy sai
+   cho các mã máy đang lo, quá hạn thì gửi thay. Nhiều máy dùng chung một bot: tin ghim ghi tên máy đang gửi, máy khác thấy tin
+   còn mới thì đứng chờ và thay sau PEER giây (sớm hơn bot web, để máy dự phòng nhận trước). Thời điểm lấy từ máy chủ Telegram (date / edit_date), nên đồng hồ máy sai
    không ảnh hưởng. Không cần thêm khóa bí mật nào ngoài token của bot.
    const sb = require('./standby.js')(tg, chatId); tg(method, body) trả về "result" của Telegram. */
 'use strict';
 const MARK = 'ICT-MT5';
-const FRESH = 20 * 60; // giây: tin ghim cũ hơn thế này thì coi như máy đã ngừng
+const FRESH = 20 * 60; // giây: tin ghim cũ hơn thế này thì bot web coi như máy đã ngừng
+const PEER = 12 * 60; // giây: máy khác thay máy đang gửi sau chừng này (đã lỡ hai nhịp 5 phút)
 
 module.exports = function (tg, chat) {
   const p2 = (n) => String(n).padStart(2, '0'), vn = (t) => { const d = new Date(t + 7 * 3600000); return p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()) + ' ' + p2(d.getUTCDate()) + '/' + p2(d.getUTCMonth() + 1); };
-  const text = (symbols, now) => '🖥 ' + MARK + ' đang gửi tin: ' + symbols.join(', ') + '\nCập nhật ' + vn(now) + '. Bot web im lặng cho các mã này; máy ngừng quá ' + FRESH / 60 + ' phút thì bot web gửi thay.\nĐừng bỏ ghim tin này hoặc ghim tin khác trong cuộc trò chuyện.';
+  const text = (symbols, now, device) => '🖥 ' + MARK + ' đang gửi tin: ' + symbols.join(', ') + (device ? '\nMáy: ' + device : '') + '\nCập nhật ' + vn(now) + '. Bot web im lặng cho các mã này; máy ngừng quá ' + FRESH / 60 + ' phút thì bot web gửi thay.\nĐừng bỏ ghim tin này hoặc ghim tin khác trong cuộc trò chuyện.';
   const pinned = async () => { const c = await tg('getChat', { chat_id: chat }); return (c && c.pinned_message) || null; };
 
   /* bot web: { symbols, age (giây), at (ms) } theo tin ghim, hoặc null nếu không có tin ghim của máy */
   async function read(now) {
     const m = await pinned(); if (!m || String(m.text || '').indexOf(MARK) < 0) return null;
     const found = /đang gửi tin: ([A-Z0-9, ]+)/.exec(m.text), at = (m.edit_date || m.date) * 1000;
-    return found ? { symbols: found[1].split(',').map((x) => x.trim()).filter(Boolean), at, age: Math.max(0, ((now || Date.now()) - at) / 1000) } : null;
+    const who = /\nMáy: (.+)/.exec(m.text);
+    return found ? { symbols: found[1].split(',').map((x) => x.trim()).filter(Boolean), device: who ? who[1].trim() : '', at, age: Math.max(0, ((now || Date.now()) - at) / 1000) } : null;
   }
   /* máy: báo đang chạy cho các mã này. mem.id = tin ghim của máy (lưu trong trạng thái) */
-  async function beat(mem, symbols, now) {
-    const body = text(symbols, now || Date.now());
+  async function beat(mem, symbols, now, device) {
+    const body = text(symbols, now || Date.now(), device);
     let edited = false;
     if (mem.id) {
       try { await tg('editMessageText', { chat_id: chat, message_id: mem.id, text: body }); edited = true; }
@@ -40,4 +43,4 @@ module.exports = function (tg, chat) {
   }
   return { read, beat, text };
 };
-module.exports.FRESH = FRESH; module.exports.MARK = MARK;
+module.exports.FRESH = FRESH; module.exports.PEER = PEER; module.exports.MARK = MARK;

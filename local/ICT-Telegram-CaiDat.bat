@@ -10,9 +10,28 @@ if errorlevel 1 (
   exit /b 1
 )
 for /f "delims=" %%F in ('node local\telegram.js --init') do set "ICTCFG=%%F"
-echo Dien TG_BOT_TOKEN va TG_CHAT_ID vao tep vua mo, bam Ctrl+S roi dong Notepad.
-start /wait notepad "%ICTCFG%"
-node local\telegram.js --test
+start "" notepad "%ICTCFG%"
 echo.
-echo Neu da nhan tin thu: chay ICT-Local.bat de bat dau gui tin tu may nay.
+echo  1. Trong Notepad vua mo: dien token sau TG_BOT_TOKEN= va so chat id sau TG_CHAT_ID=
+echo  2. Bam Ctrl+S de luu.
+echo  3. Quay lai cua so nay va bam mot phim bat ky.
+echo.
+pause >nul
+node local\telegram.js --test
+if errorlevel 1 (
+  echo.
+  echo Chua gui duoc tin thu. Chay lai tep nay de sua token hoac chat id.
+  pause
+  exit /b 1
+)
+echo.
+node local\telegram.js --bridge
+if errorlevel 1 (
+  echo Dang mo ICT Local va cua so gui tin...
+  start "" "%~dp0ICT-Local.bat"
+) else (
+  echo Cau noi MT5 dang chay: mo cua so gui tin...
+  start "ICT Telegram - MT5" cmd /c "node local\telegram.js & pause"
+)
+echo Xong. Giu cua so ICT Local va cua so ICT Telegram mo. Cua so nay co the dong.
 pause

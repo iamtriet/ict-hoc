@@ -1,0 +1,2 @@
+# tep .bat luu nguyen CRLF trong kho: tai thang tu GitHub (khong qua git) van chay dung
+*.bat -text

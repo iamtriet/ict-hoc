@@ -29,7 +29,11 @@ Tin đến sau khi nến đóng; nếu bot vừa chạy lại sau khi ngừng th
 
 ## Gửi tin từ máy MT5 (giá sàn), bot web dự phòng
 
-Máy đang mở MT5 có thể tự gửi tin bằng **giá sàn của bạn**; bot GitHub (giá Deriv / Coinbase) chỉ gửi khi máy ngừng. Cài một lần trên **một** máy:
+Máy đang mở MT5 có thể tự gửi tin bằng **giá sàn của bạn**; bot GitHub (giá Deriv / Coinbase) chỉ gửi khi máy ngừng.
+
+**Máy mới:** dùng bộ cài một lần bấm trong [local/README.md](local/README.md). Nhiều máy dùng chung một bot được: mỗi lúc chỉ một máy gửi (tin ghim ghi tên máy), máy khác chờ và tự nhận sau khoảng 12 phút khi máy đó ngừng.
+
+Cài tay trên máy đã có dự án:
 
 1. Cần Node.js (bản LTS, https://nodejs.org), ngoài MT5 và Python như trong [local/README.md](local/README.md).
 2. Bấm đúp `local\ICT-Telegram-CaiDat.bat`. Notepad mở tệp cấu hình: điền `TG_BOT_TOKEN` và `TG_CHAT_ID`, lưu, đóng. Cửa sổ gửi một tin 🧪 để kiểm tra.

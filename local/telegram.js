@@ -1,7 +1,7 @@
 /* Gửi tin Telegram từ máy này bằng giá MetaTrader 5. Chạy kèm local\ICT-Local.bat (cần cầu nối local\mt5_server.py đang chạy).
    Nghe cầu nối, quét ngay khi nến 15m đóng (và thêm một lượt mỗi 5 phút) bằng đúng mã của bot (scripts/notify.js).
    Khóa bí mật nằm NGOÀI thư mục dự án, trong %LOCALAPPDATA%\ICT-Telegram\config.env (hoặc biến môi trường):
-     TG_BOT_TOKEN=...   TG_CHAT_ID=...   (tùy chọn: SYMBOLS, STAGES, MIN_SCORE, MODE, SESSIONS, HB_HOUR, NEWS, SHOT, BRIDGE_PORT)
+     TG_BOT_TOKEN=...   TG_CHAT_ID=...   (tùy chọn: SYMBOLS, STAGES, MIN_SCORE, MODE, SESSIONS, HB_HOUR, NEWS, SHOT, BRIDGE_PORT, DEVICE_NAME)
    node local/telegram.js          chạy
    node local/telegram.js --test   gửi một tin thử để kiểm tra khóa */
 'use strict';
@@ -9,7 +9,7 @@ const fs = require('fs'), path = require('path'), net = require('net'), os = req
 const ROOT = path.join(__dirname, '..'), env = process.env;
 const DIR = env.ICT_TG_DIR || path.join(env.LOCALAPPDATA || path.join(os.homedir(), '.config'), 'ICT-Telegram');
 const FILE = path.join(DIR, 'config.env');
-const KEYS = ['TG_BOT_TOKEN', 'TG_CHAT_ID', 'SYMBOLS', 'STAGES', 'MIN_SCORE', 'MODE', 'SESSIONS', 'HB_HOUR', 'NEWS', 'SHOT', 'SITE_URL', 'BRIDGE_PORT', 'LOCK_PORT'];
+const KEYS = ['TG_BOT_TOKEN', 'TG_CHAT_ID', 'SYMBOLS', 'STAGES', 'MIN_SCORE', 'MODE', 'SESSIONS', 'HB_HOUR', 'NEWS', 'SHOT', 'SITE_URL', 'BRIDGE_PORT', 'LOCK_PORT', 'DEVICE_NAME'];
 const TEMPLATE = ['# Khóa bot Telegram cho máy này. Điền sau dấu =, rồi lưu lại (Ctrl+S). Không gửi tệp này cho ai.', '# Token lấy từ @BotFather, chat id lấy từ @userinfobot (xem ALERTS.md).', 'TG_BOT_TOKEN=', 'TG_CHAT_ID=', ''].join('\r\n');
 
 function config() {
@@ -26,12 +26,17 @@ if (process.argv.indexOf('--init') >= 0) {
   console.log(FILE); process.exit(0);
 }
 const cfg = config(), hide = (s) => (cfg.TG_BOT_TOKEN ? String(s).split(cfg.TG_BOT_TOKEN).join('***') : String(s));
-if (!cfg.TG_BOT_TOKEN || !cfg.TG_CHAT_ID) {
+const missing = !cfg.TG_BOT_TOKEN || !cfg.TG_CHAT_ID;
+/* bộ cài hỏi: cầu nối MT5 đã chạy chưa (mã thoát 0 = đang chạy) */
+const bridgeOnly = process.argv.indexOf('--bridge') >= 0;
+if (missing && !bridgeOnly) {
   console.log('Chưa có TG_BOT_TOKEN và TG_CHAT_ID. Chạy local\\ICT-Telegram-CaiDat.bat để điền (tệp ' + FILE + ').');
   process.exit(2);
 }
 
-if (process.argv.indexOf('--test') >= 0) {
+if (bridgeOnly) {
+  fetch('http://127.0.0.1:' + (+cfg.BRIDGE_PORT || 8765) + '/mt5/info', { signal: AbortSignal.timeout(6000) }).then((r) => { process.exitCode = r.ok ? 0 : 1; }).catch(() => { process.exitCode = 1; });
+} else if (process.argv.indexOf('--test') >= 0) {
   fetch('https://api.telegram.org/bot' + cfg.TG_BOT_TOKEN + '/sendMessage', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: cfg.TG_CHAT_ID, text: '🧪 TIN THỬ: máy này đã gửi được tin Telegram cho ICT.' }), signal: AbortSignal.timeout(30000) })
     .then((r) => r.json()).then((j) => { if (!j.ok) throw new Error(j.description || 'không rõ lỗi'); console.log('Đã gửi tin thử. Hãy xem Telegram.'); })
     .catch((e) => { console.log('KHÔNG gửi được: ' + hide(e.message) + '. Kiểm tra lại token, chat id, và bạn đã nhắn cho bot ít nhất một lần.'); process.exitCode = 1; });

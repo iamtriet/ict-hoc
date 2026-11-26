@@ -2,6 +2,18 @@
 
 Giống trang trên web, nhưng giá XAUUSD và BTCUSD đọc thẳng từ MT5 đang mở trên máy này, đúng giá sàn của bạn. Cả trang **ICT Live** lẫn trang **Phân tích** (bấm mũi tên ← trên ICT Live) đều dùng giá này và cùng một cách ghi tín hiệu.
 
+## Cài trên máy mới (một lần bấm)
+
+1. Cài MetaTrader 5 của sàn (nếu chưa có).
+2. Tải [ICT-CaiDat-MayMoi.bat](https://iamtriet.github.io/ict-hoc/local/ICT-CaiDat-MayMoi.bat) rồi bấm đúp. Windows hỏi vì tệp tải từ mạng: bấm **More info → Run anyway**.
+3. Làm theo các bước hiện trên màn hình: đăng nhập MT5 (nhớ lưu mật khẩu), điền `TG_BOT_TOKEN` và `TG_CHAT_ID` (giống máy cũ), trả lời có tự chạy khi đăng nhập Windows hay không.
+
+Bộ cài tự thêm Python, Node.js (qua `winget`, bạn tự đồng ý điều khoản nếu được hỏi) và gói MetaTrader5, tải mã vào `%LOCALAPPDATA%\ICT-Hub\app`, tạo lối tắt **ICT Local** trên Desktop và gửi một tin thử. Chạy lại tệp đó để cập nhật (đóng các cửa sổ ICT trước).
+
+Không muốn gõ lại khóa: chép `%LOCALAPPDATA%\ICT-Telegram\config.env` từ máy đã cài, đặt **cạnh** tệp cài trên máy mới trước khi chạy, xong thì xóa bản chép. Tệp này chứa token: không gửi qua chat hay đưa lên mạng.
+
+Nhiều máy dùng chung một bot: mỗi lúc **chỉ một máy gửi** (tin ghim ghi tên máy). Máy khác đứng chờ và tự nhận sau khoảng 12 phút khi máy đó tắt, ngủ hoặc mất giá MT5; nếu không máy nào chạy, bot web gửi thay sau khoảng 20 phút. Muốn đổi tên hiện trên tin: thêm `DEVICE_NAME=...` vào `config.env`.
+
 ## Cách chạy
 
 1. Mở MetaTrader 5 và đăng nhập (demo cũng được).

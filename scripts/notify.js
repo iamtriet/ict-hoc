@@ -4,7 +4,7 @@
    MIN_SCORE (mặc định 55) · SYMBOLS (mặc định XAUUSD,BTCUSD) · MODE both|ict|pa · PRICE_OFFSET spot|none|số · SITE_URL
    STAGES (mặc định sweep,swing,cancel,order; thêm plan để báo mọi lần đổi mốc chờ; off để tắt) – tin từng bước, xem scripts/stages.js
    DRY=1 chỉ in ra + ghi ảnh vào ./out, không gửi · TEST=1 gửi tin thử · FORCE=1 bỏ qua chống trùng
-   SOURCE=mt5 (chạy trên máy qua local/telegram.js): MT5_URL, MT5_QUOTES, STATE_FILE · STANDBY=off tắt việc nhường cho máy MT5 */
+   SOURCE=mt5 (chạy trên máy qua local/telegram.js): MT5_URL, MT5_QUOTES, STATE_FILE, DEVICE_NAME · STANDBY=off tắt việc nhường cho máy MT5 */
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const chartSvg = require('./chart.js'), publish = require('./publish-data.js'), shot = require('./shot.js');
@@ -15,6 +15,7 @@ const STATE = env.STATE_FILE || path.join(ROOT, '.state', 'state.json');
 /* LOCAL: chạy trên máy có MT5, giá và nến lấy từ cầu nối local/mt5_server.py */
 const LOCAL = env.SOURCE === 'mt5', MT5_URL = (env.MT5_URL || 'http://127.0.0.1:8765').replace(/\/+$/, '');
 const QUOTES = (() => { try { return JSON.parse(env.MT5_QUOTES) || {}; } catch (e) { return {}; } })(); // giá bid / ask mới nhất từ cầu nối
+const DEVICE = (env.DEVICE_NAME || require('os').hostname() || 'máy này').replace(/\s+/g, ' ').slice(0, 40); // tên ghi trên tin ghim khi nhiều máy dùng chung bot
 let QUIET = new Map(), MUTE = false; // bot web: mã máy MT5 đang lo (mã → lúc máy báo sống gần nhất) và cờ im lặng cho lượt đang xử lý
 
 /* ---- nạp lõi phân tích ---- */
@@ -268,6 +269,12 @@ async function main(st) {
     } catch (e) { console.log('::warning::Không đọc được tin ghim của máy MT5: ' + e.message); }
     QUIET = new Map((st.quiet || []).map((x) => [x, st.quietAt || 0]));
   }
+  // máy MT5: máy khác đang gửi (tin ghim còn mới) thì đứng chờ, tự nhận khi máy đó ngừng
+  let waiting = null;
+  if (LOCAL && !DRY) {
+    try { const p = await sb.read(); if (p && p.device && p.device !== DEVICE && p.age < standby.PEER) waiting = p; } catch (e) { console.log('::warning::Không đọc được tin ghim: ' + e.message); }
+    if (waiting) { QUIET = new Map(SYMBOLS.map((x) => [x, waiting.at])); st.beatAt = 0; console.log('Dự phòng: máy "' + waiting.device + '" đang gửi tin; máy này chờ, tự nhận khi máy đó ngừng quá ' + standby.PEER / 60 + ' phút.'); }
+  }
   MUTE = QUIET.size > 0; // tin chung (ngừng quét, báo sống, giờ phiên) do máy MT5 lo khi máy đang chạy
   if (!LOCAL && first && gap > 20) await say('⚠️ <b>Bot ngừng quét ~' + Math.round(gap) + ' phút</b> (từ ' + vn(now0 - gap * 60000) + '), đã chạy lại. Có thể lỡ setup trong khoảng đó.');
   MUTE = false;
@@ -277,12 +284,12 @@ async function main(st) {
   for (const id of SYMBOLS) { MUTE = QUIET.has(id); try { rs.push(await scan(id, st)); } catch (e) { err = err || e; console.log('::warning::[' + id + '] ' + (e && e.message ? e.message : e)); } finally { MUTE = false; } }
   const ok = rs.filter((r) => !r.fail);
   // máy MT5: cập nhật tin ghim cho các mã đang lấy được giá (thị trường nghỉ vẫn tính là đang lo)
-  if (LOCAL && !DRY) {
+  if (LOCAL && !DRY && !waiting) {
     const alive = ok.filter((r) => r.ageMin <= 45 || r.closed).map((r) => r.id);
     if (alive.length) {
       try {
-        const away = st.beatAt ? Date.now() - st.beatAt : null; st.pin = st.pin || {}; await sb.beat(st.pin, alive);
-        if (away == null || away > standby.FRESH * 1000) await say(msg.resumed(alive, away == null ? null : Math.round(away / 60000)));
+        const away = st.beatAt ? Date.now() - st.beatAt : null; st.pin = st.pin || {}; await sb.beat(st.pin, alive, Date.now(), DEVICE);
+        if (away == null || away > standby.FRESH * 1000) await say(msg.resumed(alive, away == null ? null : Math.round(away / 60000), DEVICE));
         st.beatAt = Date.now();
       } catch (e) { console.log('::warning::Không cập nhật được tin ghim: ' + e.message); }
     }
