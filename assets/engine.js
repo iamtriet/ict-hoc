@@ -325,12 +325,12 @@
       };
       if (L.has('pd') && i1 > 8) { let ph = -1e9, pl = 1e9; for (let i = Math.max(x0, i1 - 70); i < i1; i++) { ph = Math.max(ph, S.bars[i].h); pl = Math.min(pl, S.bars[i].l); } pdBox(m.l, ph, pl, 'a a-info'); }
       if (D && L.has('fvg')) D.fvg.forEach((z) => {
-        if (z.fill != null && z.fill < x0) return; const xa = px(Math.max(z.x1, x0)) - slot / 2, xe = z.fill != null ? px(z.fill) : right, c = z.dir === 1 ? 'a-bull' : 'a-bear';
+        if (z.fill != null && z.fill < x0) return; const xa = px(Math.max(z.x1, x0)) - slot / 2, xe = z.fill != null ? px(z.fill) : right, c = z.dir === 1 ? 'a-zb' : 'a-zr';
         s += '<g class="a ' + c + '"><rect class="fl" fill-opacity="' + (z.fill != null ? 0.1 : 0.2) + '" x="' + xa + '" y="' + py(z.top) + '" width="' + Math.max(2, xe - xa) + '" height="' + Math.max(1, py(z.bot) - py(z.top)) + '"/><line class="ln dot" x1="' + xa + '" x2="' + xe + '" y1="' + py((z.top + z.bot) / 2) + '" y2="' + py((z.top + z.bot) / 2) + '"/></g>';
         if (z.fill == null) req({ text: 'FVG', box: { x1: xa, x2: xe, y1: py(z.top), y2: py(z.bot) }, tc: 'tx sm', g: 'a ' + c, pri: 2 });
       });
       if (D && L.has('ob')) D.ob.slice(-5).forEach((z) => {
-        if (z.inv != null && z.inv < x0) return; const xa = px(Math.max(z.i, x0)) - slot / 2, xe = z.inv != null ? px(z.inv) : right, c = z.dir === 1 ? 'a-bull' : 'a-bear', ww = Math.max(2, xe - xa), hh = Math.max(1, py(z.bot) - py(z.top));
+        if (z.inv != null && z.inv < x0) return; const xa = px(Math.max(z.i, x0)) - slot / 2, xe = z.inv != null ? px(z.inv) : right, c = z.dir === 1 ? 'a-zb' : 'a-zr', ww = Math.max(2, xe - xa), hh = Math.max(1, py(z.bot) - py(z.top));
         s += '<g class="a ' + c + '"><rect class="fl" fill-opacity="' + (z.inv != null ? 0.08 : 0.22) + '" x="' + xa + '" y="' + py(z.top) + '" width="' + ww + '" height="' + hh + '"/><rect class="ln" fill="none" x="' + xa + '" y="' + py(z.top) + '" width="' + ww + '" height="' + hh + '"/></g>';
         req({ text: z.dir === 1 ? 'Bull OB' : 'Bear OB', box: { x1: xa, x2: xa + ww, y1: py(z.top), y2: py(z.bot) }, tc: 'tx sm', g: 'a ' + c, pri: 2 });
       });
