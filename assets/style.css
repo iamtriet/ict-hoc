@@ -1,14 +1,14 @@
 /* Kênh Học ICT — bố cục: thanh điều hướng trái + cột đọc rộng; biểu đồ là "tấm bảng" chính của mỗi bài */
 :root {
   --bg: #0c1016; --panel: #121820; --card: #171f29; --line: #263243; --fg: #e8edf3; --mute: #97a5b6; --faint: #6b7b8e;
-  --accent: #f2b73c; --accent-bg: #f2b73c; --accent-ink: #1b1400; --zbull: #8f7dff; --zbear: #ff9a4d; --bull: #2fc7a2; --bear: #f2646f; --info: #5fa8ff; --warn: #f2b73c; --note: #b9a5ff; --tint: rgba(255,255,255,.035);
+  --accent: #f2b73c; --accent-bg: #f2b73c; --accent-ink: #1b1400; --zbull: #3cc0ff; --zbear: #ff9a4d; --obbull: #9b7dff; --obbear: #e85bd0; --bull: #2fc7a2; --bear: #f2646f; --info: #5fa8ff; --warn: #f2b73c; --note: #b9a5ff; --tint: rgba(255,255,255,.035);
   --ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; --disp: 'Be Vietnam Pro', 'Inter', system-ui, sans-serif; --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) { --bg: #f2f5f8; --panel: #ffffff; --card: #ffffff; --line: #d8dfe8; --fg: #121a24; --mute: #53627a; --faint: #7d8ba0; --accent: #8f6100; --zbull: #5b3fd1; --zbear: #c2570d; --bull: #0d8d70; --bear: #cc3547; --info: #1c68d0; --warn: #8f6100; --note: #6b46c1; --tint: rgba(10,30,60,.04); color-scheme: light; }
+  :root:not([data-theme="dark"]) { --bg: #f2f5f8; --panel: #ffffff; --card: #ffffff; --line: #d8dfe8; --fg: #121a24; --mute: #53627a; --faint: #7d8ba0; --accent: #8f6100; --zbull: #0b87c2; --zbear: #c2570d; --obbull: #5b3fd1; --obbear: #b02a9a; --bull: #0d8d70; --bear: #cc3547; --info: #1c68d0; --warn: #8f6100; --note: #6b46c1; --tint: rgba(10,30,60,.04); color-scheme: light; }
 }
-:root[data-theme="light"] { --bg: #f2f5f8; --panel: #ffffff; --card: #ffffff; --line: #d8dfe8; --fg: #121a24; --mute: #53627a; --faint: #7d8ba0; --accent: #8f6100; --zbull: #5b3fd1; --zbear: #c2570d; --bull: #0d8d70; --bear: #cc3547; --info: #1c68d0; --warn: #8f6100; --note: #6b46c1; --tint: rgba(10,30,60,.04); color-scheme: light; }
+:root[data-theme="light"] { --bg: #f2f5f8; --panel: #ffffff; --card: #ffffff; --line: #d8dfe8; --fg: #121a24; --mute: #53627a; --faint: #7d8ba0; --accent: #8f6100; --zbull: #0b87c2; --zbear: #c2570d; --obbull: #5b3fd1; --obbear: #b02a9a; --bull: #0d8d70; --bear: #cc3547; --info: #1c68d0; --warn: #8f6100; --note: #6b46c1; --tint: rgba(10,30,60,.04); color-scheme: light; }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -100,7 +100,7 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; } th, td { text
 .zp { fill: var(--bear); fill-opacity: .07; } .zd { fill: var(--bull); fill-opacity: .07; } .eq { stroke: var(--mute); stroke-dasharray: 4 3; }
 svg line.eq { fill: none; stroke: var(--mute); stroke-dasharray: 4 3; }
 .cu line { stroke: var(--bull); stroke-width: 1.2; } .cu rect { fill: var(--bull); } .cd line { stroke: var(--bear); stroke-width: 1.2; } .cd rect { fill: var(--bear); }
-.a-zb { --ac: var(--zbull); } .a-zr { --ac: var(--zbear); } .a-bull { --ac: var(--bull); } .a-bear { --ac: var(--bear); } .a-info { --ac: var(--info); } .a-warn { --ac: var(--warn); } .a-note { --ac: var(--note); } .a-mute { --ac: var(--mute); }
+.a-ob { --ac: var(--obbull); } .a-os { --ac: var(--obbear); } .a-zb { --ac: var(--zbull); } .a-zr { --ac: var(--zbear); } .a-bull { --ac: var(--bull); } .a-bear { --ac: var(--bear); } .a-info { --ac: var(--info); } .a-warn { --ac: var(--warn); } .a-note { --ac: var(--note); } .a-mute { --ac: var(--mute); }
 .a .ln { stroke: var(--ac); stroke-width: 1.3; fill: none; } .a .ln.dash { stroke-dasharray: 5 4; } .a .ln.dot { stroke-dasharray: 2 3; stroke-width: 1; }
 .a .fl { fill: var(--ac); } .a .tx { fill: var(--ac); font: 600 10.5px var(--ui); } .a .tx.sm { font-size: 9.5px; } .a .tx.b { font-weight: 800; font-size: 11px; } .a .pl { fill: var(--card); stroke: var(--ac); stroke-width: 1; }
 .tx.hl, .sw.hl { paint-order: stroke; stroke: var(--panel); stroke-width: 3.5px; stroke-linejoin: round; }

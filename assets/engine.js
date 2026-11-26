@@ -330,7 +330,7 @@
         if (z.fill == null) req({ text: 'FVG', box: { x1: xa, x2: xe, y1: py(z.top), y2: py(z.bot) }, tc: 'tx sm', g: 'a ' + c, pri: 2 });
       });
       if (D && L.has('ob')) D.ob.slice(-5).forEach((z) => {
-        if (z.inv != null && z.inv < x0) return; const xa = px(Math.max(z.i, x0)) - slot / 2, xe = z.inv != null ? px(z.inv) : right, c = z.dir === 1 ? 'a-zb' : 'a-zr', ww = Math.max(2, xe - xa), hh = Math.max(1, py(z.bot) - py(z.top));
+        if (z.inv != null && z.inv < x0) return; const xa = px(Math.max(z.i, x0)) - slot / 2, xe = z.inv != null ? px(z.inv) : right, c = z.dir === 1 ? 'a-ob' : 'a-os', ww = Math.max(2, xe - xa), hh = Math.max(1, py(z.bot) - py(z.top));
         s += '<g class="a ' + c + '"><rect class="fl" fill-opacity="' + (z.inv != null ? 0.08 : 0.22) + '" x="' + xa + '" y="' + py(z.top) + '" width="' + ww + '" height="' + hh + '"/><rect class="ln" fill="none" x="' + xa + '" y="' + py(z.top) + '" width="' + ww + '" height="' + hh + '"/></g>';
         req({ text: z.dir === 1 ? 'Bull OB' : 'Bear OB', box: { x1: xa, x2: xa + ww, y1: py(z.top), y2: py(z.bot) }, tc: 'tx sm', g: 'a ' + c, pri: 2 });
       });
