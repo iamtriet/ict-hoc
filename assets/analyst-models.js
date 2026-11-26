@@ -111,10 +111,12 @@
   /* ---------- hai mô hình chính qua cùng tiêu chí (A.analyze, điểm ≥ 50, mỗi nến 15m, đã trừ phí) ----------
      Cùng cách ghi như trên; x2 = profit factor [A, B] khi phí gấp đôi. Vàng 09/2020 – 11/2026 (nến PAXG), BTC 01/2019 – 11/2026.
      dv = đo lại trên nến Deriv XAU/USD 12/2025 – 11/2026 (API chỉ cho khoảng một năm): [lệnh, % thắng, tổng R sau phí, profit factor].
-     `ok` giữ theo tiêu chí hai giai đoạn; dv âm thì nhãn hiển thị phải nói rõ. */
+     mt = đo trên nến MT5 của một sàn (mã ghi trong `sym`), đúng đường ống ICT Live (999 nến, điểm >= 55, bỏ lệnh đã qua TP1),
+     phí = một lần chênh mua/bán; vàng 10/2022 – 11/2026, BTC 02/2024 – 11/2026; cùng cách ghi như dv. Chỉ hiện khi đang dùng đúng mã đó.
+     `ok` giữ theo tiêu chí hai giai đoạn; dv hoặc mt âm thì nhãn hiển thị phải nói rõ. */
   A.CORE_TESTS = {
-    XAUUSD: { ICT: { ok: true, a: [314, 45, 29.6, 1.16], b: [342, 43, 46.4, 1.22], x2: [1.03, 1.05], dv: [113, 27, -19.4, 0.79] }, PA: { ok: false, a: [94, 35, -24.4, 0.63], b: [130, 40, 15.3, 1.18], x2: [0.53, 0.99], dv: [36, 25, -9.2, 0.69] } },
-    BTCUSD: { ICT: { ok: false, a: [943, 36, -169.6, 0.77], b: [508, 35, -96.2, 0.77] }, PA: { ok: false, a: [351, 35, -100.5, 0.65], b: [223, 34, -67.5, 0.65] } },
+    XAUUSD: { ICT: { ok: true, a: [314, 45, 29.6, 1.16], b: [342, 43, 46.4, 1.22], x2: [1.03, 1.05], dv: [113, 27, -19.4, 0.79], mt: { sym: 'XAUUSDm', r: [469, 33, -15.9, 0.95] } }, PA: { ok: false, a: [94, 35, -24.4, 0.63], b: [130, 40, 15.3, 1.18], x2: [0.53, 0.99], dv: [36, 25, -9.2, 0.69], mt: { sym: 'XAUUSDm', r: [190, 31, -30.3, 0.78] } } },
+    BTCUSD: { ICT: { ok: false, a: [943, 36, -169.6, 0.77], b: [508, 35, -96.2, 0.77], mt: { sym: 'BTCUSDm', r: [614, 33, -33.3, 0.93] } }, PA: { ok: false, a: [351, 35, -100.5, 0.65], b: [223, 34, -67.5, 0.65], mt: { sym: 'BTCUSDm', r: [304, 33, -53.6, 0.77] } } },
   };
   /* hiệu ứng và hệ đã công bố riêng cho vàng (chỉ để minh bạch: không cái nào đạt). Mỗi dòng: tên, [nhãn giai đoạn, tổng R sau phí]...
      Hệ trong ngày: PAXG 15m và vàng tương lai GC=F nến 1 giờ. Hệ khung ngày (chỉ mua): GC=F nến ngày, ba giai đoạn thị trường. */

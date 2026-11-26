@@ -17,6 +17,7 @@ Mở `index.html` bằng trình duyệt (không cần cài gì). Dữ liệu cá
 - `assets/player.js` — Replay, chế độ thực hành, sơ đồ minh họa.
 - `assets/scenarios.js`, `scenarios-b.js`, `scenarios-c.js` — kịch bản giá mô phỏng + chú thích + bước diễn giải.
 - `assets/analyst-core.js`, `assets/analyst.js` — trang **Phân tích & gợi ý lệnh**: tải nến vàng từ Deriv (`assets/deriv.js`, dự phòng PAXG) và BTC từ Binance, bias 4H/1H, mô hình ICT và Price Action trên 15m, ảnh đa khung + xuất PNG, kiểm chứng lịch sử.
+- `local/` — **ICT Live chạy trên máy** với giá từ MetaTrader 5 (xem `local/README.md`).
 - `scripts/notify.js`, `.github/workflows/alerts.yml` — quét theo lịch và gửi Telegram khi có setup (xem `ALERTS.md`).
 - `assets/frames.js` — chuyển khung thời gian (1m/5m/15m/1H) và chế độ Đa khung cho mọi biểu đồ nội ngày.
 - `assets/lessons-a..h.js` — nội dung bài học và quiz.

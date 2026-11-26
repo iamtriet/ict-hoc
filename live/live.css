@@ -19,6 +19,7 @@ body.lv { margin: 0; display: block; }
 .lv-h { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; } .lv-sc { margin-left: auto; font: 700 12.5px var(--mono); color: var(--mute); }
 .lv-state { font: 700 14px var(--ui); margin: 7px 0; } .lv-state.wait { color: var(--warn); } .lv-state.run { color: var(--info); } .lv-state.prov { color: var(--warn); }
 .lv-lv { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; } .lv-lv div { background: var(--tint); border-radius: 7px; padding: 5px 7px; } .lv-lv i { display: block; font-style: normal; font-size: 10.5px; color: var(--faint); } .lv-lv b { font: 700 14.5px var(--mono); }
+.lv-order { font-size: 13px; margin: 8px 0 0; padding: 7px 9px; border: 1px dashed var(--line); border-radius: 7px; font-family: var(--mono); } .lv-order .lv-sub { font-family: var(--ui); }
 .lv-donebox { margin-top: 14px; } .lv-donebox summary { cursor: pointer; font-weight: 700; }
 .lv-disc { font-size: 12px; color: var(--faint); text-align: center; margin-top: 18px; }
 @media (max-width: 900px) { .lv-grid { grid-template-columns: 1fr; } #lv-chart { position: static; } }

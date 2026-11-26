@@ -139,11 +139,23 @@ const ids = Object.keys(A.SYMS); if (ids.join() !== 'XAUUSD,BTCUSD') console.log
     want('bỏ qua nến trước tín hiệu', SG.status(rec, [{ t: 9 * M, o: 99, h: 105, l: 90, c: 99 }]), 'pending');
     want('Price Action khớp ngay', st([[100, 100.5, 99, 99.5]], Object.assign({}, rec, { model: 'PA' })), 'active');
     if (Math.abs(st([[99, 100.1, 99, 99]]).R - 0.5) > 1e-9) throw new Error('tính R đang chạy sai');
+    // không báo lệnh chờ khi giá đã tới TP1; mức nhập sàn cộng chênh mua/bán đúng phía
+    const wait = { model: 'ICT', state: 'pending', dir: 'BUY', tp1: 110 };
+    if (SG.sendable(wait, 100, 110) || !SG.sendable(wait, 100, 109.9) || SG.sendable(Object.assign({}, wait, { dir: 'SELL', tp1: 90 }), 100, 89)) throw new Error('lệnh đã qua TP1 vẫn được báo (hoặc lệnh còn tốt bị bỏ)');
+    const ob = SG.orderLevels({ model: 'ICT', dir: 'BUY', entry: 100, sl: 98, tp1: 103, tp2: 105 }, 0.24, 3), os = SG.orderLevels(rec, 0.24, 3);
+    if ([ob.entry, ob.sl, ob.tp1, ob.tp2].join() !== '100.24,98,103,105' || [os.entry, os.sl, os.tp1, os.tp2].join() !== '100,102.24,97.24,95.24' || ob.type !== 'Buy Limit') throw new Error('mức nhập sàn sai: ' + JSON.stringify([ob, os]));
     let n = 0, opened = 0;
     for (const id of ids) {
       const d = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', id + '.json'), 'utf8')), data = { m15: rows(d.m15), h1: rows(d.h1), h4: rows(d.h4) }, book = new Map(), first = new Map();
-      for (let k = 300; k >= 0; k--) { const T = data.m15[data.m15.length - 1 - k].t + M, r = SG.scanAt(data, T, { sym: id, events: [], news: false }, book); r.added.forEach((x) => { first.set(x.id, JSON.stringify([x.entry, x.sl, x.tp1, x.tp2])); if (x.t !== T || x.score < SG.MIN) throw new Error('bản ghi sai thời điểm hoặc dưới ngưỡng'); }); }
-      for (const x of book.values()) { n++; if (JSON.stringify([x.entry, x.sl, x.tp1, x.tp2]) !== first.get(x.id)) throw new Error('mức giá bị thay đổi sau khi ghi'); const s = SG.status(x, data.m15); if (!s.state) throw new Error('không có trạng thái'); if (SG.OPEN[s.state]) opened++; }
+      for (let k = 300; k >= 0; k--) { const T = data.m15[data.m15.length - 1 - k].t + M, r = SG.scanAt(data, T, { sym: id, events: [], news: false }, book); r.added.forEach((x) => { first.set(x.id, JSON.stringify([x.entry, x.sl, x.tp1, x.tp2])); if (x.t !== T || x.score < SG.MIN) throw new Error('bản ghi sai thời điểm hoặc dưới ngưỡng'); if (SG.passed(x, r.res.price)) throw new Error('ghi một lệnh đã qua TP1 ngay lúc xuất hiện: ' + x.id); if (book.dead.has(x.id)) throw new Error('lệnh đã bỏ lại được ghi'); }); }
+      for (const x of book.values()) {
+        n++; if (JSON.stringify([x.entry, x.sl, x.tp1, x.tp2]) !== first.get(x.id)) throw new Error('mức giá bị thay đổi sau khi ghi'); const s = SG.status(x, data.m15); if (!s.state) throw new Error('không có trạng thái'); if (SG.OPEN[s.state]) opened++;
+        // dạng dùng cho trang Phân tích: mức giá của sổ, trạng thái theo nến, vị trí nến tính lại đúng trên mảng dài hơn lúc ghi
+        const m = data.m15.slice(-900), v = SG.view(x, m), same = (i, t) => t == null || t < m[0].t || m[i].t === t;
+        if (v.entry !== x.entry || v.sl !== x.sl || v.tp1 !== x.tp1 || v.tp2 !== x.tp2 || v.state !== s.state || v.since !== x.t) throw new Error('bản xem lệch với sổ: ' + x.id);
+        if (!same(v.ready, x.tm.ready) || (v.sweep && !same(v.sweep.i, x.tm.sweep)) || (v.mss && !same(v.mss.i, x.tm.mss)) || (v.zone && !same(v.zone.x1, x.tm.zone)) || (v.rej && !same(v.rej.i, x.tm.rej))) throw new Error('bản xem đặt sai vị trí nến: ' + x.id);
+        if (!v.story.length || !v.checks || !v.title || (s.fill != null && v.fill == null)) throw new Error('bản xem thiếu nội dung: ' + x.id);
+      }
     }
     if (!n) throw new Error('không ghi được tín hiệu nào');
     ok('Trang trực tiếp: sổ tín hiệu đúng (' + n + ' tín hiệu từ dữ liệu mẫu, ' + opened + ' còn mở)');
