@@ -2,7 +2,7 @@
    Dùng đúng lõi phân tích của trang web (assets/analyst-core.js). Biến môi trường:
    TG_BOT_TOKEN, TG_CHAT_ID  (bắt buộc để gửi; đặt trong GitHub Secrets)
    MIN_SCORE (mặc định 55) · SYMBOLS (mặc định XAUUSD,BTCUSD) · MODE both|ict|pa · PRICE_OFFSET spot|none|số · SITE_URL
-   STAGES (mặc định sweep,swing,cancel,order; thêm plan để báo mọi lần đổi mốc chờ; off để tắt) – tin từng bước, xem scripts/stages.js
+   STAGES (mặc định sweep,swing,retest,cancel,order; thêm plan để báo mọi lần đổi mốc chờ; off để tắt) – tin từng bước, xem scripts/stages.js
    DRY=1 chỉ in ra + ghi ảnh vào ./out, không gửi · TEST=1 gửi tin thử · FORCE=1 bỏ qua chống trùng
    SOURCE=mt5 (chạy trên máy qua local/telegram.js): MT5_URL, MT5_QUOTES, STATE_FILE, DEVICE_NAME · STANDBY=off tắt việc nhường cho máy MT5 */
 'use strict';
@@ -23,9 +23,9 @@ const win = { setTimeout, clearTimeout, setInterval, clearInterval, fetch, Abort
 ['assets/engine.js', 'assets/deriv.js', 'assets/coinbase.js', 'assets/analyst-core.js', 'assets/analyst-models.js', 'live/signals.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), win, { filename: f }));
 const standby = require('./standby.js');
 const A = win.ICT.analyst, msg = require('./message.js')(A), steps = require('./stages.js')(A, win.ICT.signals);
-const STAGES = new Set((env.STAGES || 'sweep,swing,cancel,order').toLowerCase().split(/[\s,]+/).filter(Boolean)); if (STAGES.has('off')) STAGES.clear();
+const STAGES = new Set((env.STAGES || 'sweep,swing,retest,cancel,order').toLowerCase().split(/[\s,]+/).filter(Boolean)); if (STAGES.has('off')) STAGES.clear();
 /* loại tin từng bước nào được gửi */
-const wanted = (e) => (e.type === 'sweep' ? STAGES.has('sweep') : e.type === 'order' ? STAGES.has('order') : e.type === 'plan' ? STAGES.has('plan') || (STAGES.has('cancel') && (e.turned || !!e.broke)) : e.type === 'deeper' ? STAGES.has('plan') : STAGES.has('cancel'));
+const wanted = (e) => (e.type === 'retest' ? STAGES.has('retest') : e.type === 'nopa' ? STAGES.has('retest') && STAGES.has('cancel') : e.type === 'sweep' ? STAGES.has('sweep') : e.type === 'order' ? STAGES.has('order') : e.type === 'plan' ? STAGES.has('plan') || (STAGES.has('cancel') && (e.turned || !!e.broke)) : e.type === 'deeper' ? STAGES.has('plan') : STAGES.has('cancel'));
 const SYMBOLS = (env.SYMBOLS || 'XAUUSD,BTCUSD').split(/[\s,]+/).map((x) => x.toUpperCase()).filter((x) => A.SYMS[x]);
 if (!SYMBOLS.length) SYMBOLS.push('XAUUSD');
 let f2 = (x) => (+x).toFixed(2); // số lẻ đổi theo mã đang xử lý
@@ -226,10 +226,11 @@ async function scan(id, st) {
     if (demo) out.sample = job(demo, label); else { const base = job(null, label), p = pastDemo(base.F, base.opt); if (p) out.sample = Object.assign(base, { res: p.res, s: p.s, F: p.F }); } }
   if (ageMin > 45 && !FORCE) { console.log('Dữ liệu cũ hơn 45 phút (thị trường nghỉ hoặc nguồn chậm): bỏ qua.'); return out; }
   // từng bước của lệnh: mốc chờ, cú quét, hủy kế hoạch (xét trên nến đã đóng)
-  st.stage = st.stage || {}; const mem = (st.stage[id] = st.stage[id] || {}), follow = STAGES.size > 0 && (env.MODE || cfg.mode || 'both') !== 'pa';
+  st.stage = st.stage || {}; const mem = (st.stage[id] = st.stage[id] || {}), mode = env.MODE || cfg.mode || 'both', follow = STAGES.size > 0 && mode !== 'pa', followPA = STAGES.has('retest') && mode !== 'ict';
   const tell = async (list) => { for (const e of list) { if (!wanted(e)) continue; const t = msg.stage(e, { cfg: view, site: SITE, feed }); if (!t) continue; console.log('[' + id + '] bước:', e.type, e.state || ''); await say(backup ? t + '\n⚠️ Đang dùng giá dự phòng ' + instead.replace(' (dự phòng)', '') : t); } };
   if (follow) await tell(steps.step(mem, id, F, res, { swing: STAGES.has('swing') }));
-  if (MUTE) { if (mem.sweep) mem.sweep.said = false; mem.orders = {}; } // chuyện bot web không gửi thì sau này cũng không báo tiếp
+  if (followPA) await tell(steps.retest(mem, F, res)); // Price Action: đang retest / không ra lệnh
+  if (MUTE) { if (mem.sweep) mem.sweep.said = false; (mem.pa || []).forEach((p) => (p.said = false)); mem.orders = {}; } // chuyện bot web không gửi thì sau này cũng không báo tiếp
   let sent = 0;
   for (const s of res.setups) {
     if (s.score < MIN) continue;
@@ -243,7 +244,7 @@ async function scan(id, st) {
     // quy tắc hủy: giá đã chạm TP1 mà chưa khớp thì lệnh không còn giá trị, không gửi
     if (s.model === 'ICT' && msg.progress(s, live) >= 1 && !FORCE) { st.sent[key] = Date.now(); console.log('Bỏ qua', key, s.dir, s.score, ': giá', live, 'đã chạm TP1', s.tp1, 'trước khi khớp'); continue; }
     const q = QUOTES[id], spread = LOCAL && q && q.ask > q.bid ? q.ask - q.bid : 0;
-    const text = msg.setup(s, { cfg: view, res, events: EV, site: SITE, live, feed, spread, order: spread ? win.ICT.signals.orderLevels(s, spread, view.dec) : null, after: mem.after && mem.after.id === s.id ? mem.after.sweep : null, note: backup ? 'Đang dùng giá dự phòng ' + instead.replace(' (dự phòng)', '') + ', không phải ' + main.name : '' }); // một tin duy nhất: chú thích đi cùng album ảnh
+    const text = msg.setup(s, { cfg: view, res, events: EV, site: SITE, live, feed, spread, order: spread ? win.ICT.signals.orderLevels(s, spread, view.dec) : null, after: mem.after && mem.after.id === s.id ? mem.after.sweep : null, retest: mem.paAfter && mem.paAfter.id === s.id ? mem.paAfter.retest : null, note: backup ? 'Đang dùng giá dự phòng ' + instead.replace(' (dự phòng)', '') + ', không phải ' + main.name : '' }); // một tin duy nhất: chú thích đi cùng album ảnh
     if (DRY) console.log('\n' + msg.plain(text));
     await sendImages(job(s), text);
     st.sent[key] = Date.now(); sent++; console.log('Đã xử lý', key, s.dir, s.score);

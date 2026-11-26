@@ -57,19 +57,48 @@ module.exports = function (win, ROOT) {
   const miss = T.orders(book, [bar(10, 101, 102, 100.5, 101.5)], 103.1);
   must(miss.length === 1 && miss[0].state === 'missed' && /HỦY LỆNH CHỜ/.test(msg.stage(Object.assign(miss[0], { dir: 1 }), { cfg, site })), 'giá tới TP1 khi chưa khớp phải báo hủy lệnh chờ');
   /* tin lệnh limit nêu rõ BUY / SELL LIMIT */
+  /* Price Action: báo đang retest, rồi hoặc ra lệnh, hoặc báo không ra lệnh (lõi giả trả về lần retest dựng sẵn) */
+  {
+    let list = [];
+    const P = make({ SYMS: A.SYMS, lib: { atrAt: () => 1 }, retests: () => list }, SG);
+    const cand = (o) => Object.assign({ dir: -1, k: 'BOS', bosT: 2 * M, level: 100, peak: 95, retestT: 5 * M, ext: 100.2, atr: 1, age: 0, left: 2, rej: null, wait: false }, o);
+    const m = (n) => Array.from({ length: n }, (_, i) => calm(i + 1)), res = (o) => Object.assign({ bias: { dir: -1 }, price: 99.5, setups: [], held: [], recent: [] }, o);
+    const flow = (scans) => { const mem = {}; return { mem, ev: scans.map(([n, l, o]) => { list = l; const ev = P.retest(mem, { m15: m(n) }, res(o)); ev.forEach((e) => { const t = msg.stage(e, { cfg, site, feed: 'mt5' }); must(t && msg.plain(t).length < 1000 && !/undefined|NaN|null/.test(t), 'tin retest lỗi: ' + t); }); return ev; }) }; };
+    const seq = (f) => f.ev.map((x) => x.map((e) => e.type + (e.why ? ':' + e.why : '')).join('+') || '-').join(' ');
+    let f = flow([[5, [cand()]], [6, [cand({ age: 1, left: 1 })]], [7, [cand({ age: 2, left: 0 })]], [8, [cand({ age: 3, left: 0 })]]]);
+    must(seq(f) === 'retest - nopa:none -', 'retest không có nến từ chối phải báo đúng một lần rồi bỏ: ' + seq(f));
+    const t = msg.plain(msg.stage(f.ev[0][0], { cfg, site, feed: 'mt5' }));
+    must(/ĐANG RETEST 100\.00/.test(t) && /chuẩn bị BÁN/.test(t) && /đóng cửa dưới 100\.00/.test(t) && /SL trên đỉnh retest \(đang 100\.20\)/.test(t) && /Price Action đang lỗ/.test(t), 'tin retest thiếu nội dung: ' + t);
+    f = flow([[5, [cand()]], [6, [cand({ age: 1, left: 1, rej: { t: 6 * M, kind: 'Pin bar' } })]]]);
+    must(seq(f) === 'retest nopa:filtered', 'nến từ chối không đủ điều kiện phải báo bỏ ngay: ' + seq(f));
+    const order = { id: 'pa1', model: 'PA', d: -1, mss: { i: 1 } };
+    f = flow([[5, [cand()]], [6, [cand({ age: 1, left: 1, rej: { t: 6 * M, kind: 'Pin bar' } })], { setups: [order] }]]);
+    must(seq(f) === 'retest -' && f.mem.paAfter && f.mem.paAfter.id === 'pa1' && f.mem.paAfter.retest.level === 100 && !f.mem.pa.length, 'ra lệnh thì không báo bỏ, gắn lệnh với lần retest: ' + seq(f));
+    must(/Có nến từ chối sau retest 100\.00/.test(msg.setup({ model: 'PA', dir: 'SELL', state: 'active', score: 60, grade: 'B', entry: 99, sl: 101, tp1: 97, tp2: 95, risk: 2, rr1: 1, rr2: 2, checks: [] }, { cfg, res: { price: 99 }, events: [], now: 6 * M, site, retest: f.mem.paAfter.retest })), 'tin lệnh Price Action phải nhắc lần retest');
+    f = flow([[5, [cand()]], [6, [cand({ age: 1, left: 1 })], { held: [order] }]]);
+    must(seq(f) === 'retest nopa:news', 'lệnh bị giữ vì tin mạnh phải báo bỏ: ' + seq(f));
+    f = flow([[5, [cand()]], [6, [], { bias: { dir: 1 } }], [7, [], { bias: { dir: 1 } }]]);
+    must(seq(f) === 'retest - nopa:flip', 'đổi thiên hướng chỉ báo khi hết cửa sổ: ' + seq(f));
+    f = flow([[5, [cand({ rej: { t: 5 * M, kind: 'Pin bar' }, left: 2 })]], [8, [cand({ age: 3, left: 0 })]], [5, [cand({ age: 2, left: 0 })]]]);
+    must(seq(f) === '- - -', 'không báo retest đã có nến từ chối, đã hết cửa sổ hoặc đã cũ: ' + seq(f));
+    f = flow([[5, [cand(), cand({ bosT: 1 * M, level: 100.1 })]]]);
+    must(seq(f) === 'retest', 'hai lần phá cùng một mức chỉ báo một tin: ' + seq(f));
+    f = flow([[5, [cand()]], [20, []]]);
+    must(seq(f) === 'retest -' && !f.mem.pa.length, 'bot ngừng lâu thì bỏ chuyện cũ, không báo');
+  }
   /* chạy trên dữ liệu mẫu bằng lõi thật: không lỗi, tin hợp lệ */
   const rows = (a) => a.map((k) => ({ t: k[0], o: k[1], h: k[2], l: k[3], c: k[4] })), real = make(A, SG), count = {}; let limits = 0;
   for (const id of ['XAUUSD', 'BTCUSD']) {
     const d = JSON.parse(fs.readFileSync(path.join(ROOT, 'scripts/fixtures', id + '.json'), 'utf8')), data = { m15: rows(d.m15), h1: rows(d.h1), h4: rows(d.h4) }, m = {}, bk = new Map();
     for (let k = 400; k >= 0; k--) {
       const r2 = SG.scanAt(data, data.m15[data.m15.length - 1 - k].t + M, { sym: id, events: [], news: false }, bk);
-      const list = real.step(m, id, r2.F, r2.res);
+      const list = real.step(m, id, r2.F, r2.res).concat(real.retest(m, r2.F, r2.res));
       r2.added.forEach((x) => { const t = msg.setup(x.src, { cfg: A.SYMS[id], res: r2.res, events: [], now: x.t, site, after: m.after && m.after.id === x.id ? m.after.sweep : null }); if (x.model === 'ICT' && x.src.state === 'pending') { limits++; must(new RegExp((x.dir === 'BUY' ? 'BUY' : 'SELL') + ' LIMIT').test(t), 'tin lệnh chờ thiếu chữ LIMIT'); } must(msg.plain(t).length <= msg.LIMIT, 'tin lệnh dài quá'); real.track(m, x.id, x, x.t); });
       real.orders(m, r2.F.m15).forEach((e) => list.push(Object.assign(e, { dir: e.order.dir === 'BUY' ? 1 : -1, price: r2.res.price })));
       list.forEach((e) => { const t = msg.stage(e, { cfg: A.SYMS[id], site }); must(t && msg.plain(t).length < 1000 && !/undefined|NaN/.test(t), id + ': tin lỗi cho bước ' + e.type); count[e.type] = (count[e.type] || 0) + 1; });
     }
     JSON.stringify(m); // lưu được vào trạng thái của bot
   }
-  must(count.sweep && count.plan && count.order && limits, 'dữ liệu mẫu không đi qua đủ các bước: ' + JSON.stringify(count));
-  return count.sweep + ' lần quét, ' + limits + ' lệnh limit, ' + count.order + ' cập nhật lệnh';
+  must(count.sweep && count.plan && count.order && count.retest && count.nopa && limits, 'dữ liệu mẫu không đi qua đủ các bước: ' + JSON.stringify(count));
+  return count.sweep + ' lần quét, ' + limits + ' lệnh limit, ' + count.order + ' cập nhật lệnh, ' + count.retest + ' tin retest';
 };

@@ -24,7 +24,7 @@ module.exports = function (A) {
     const model = s.model === 'PA' ? 'Price Action' : s.model, t = ((A.CORE_TESTS || {})[cfg.id] || {})[s.model], local = c.feed === 'mt5', lost = t && (local ? t.mt && t.mt.r[2] <= 0 : t.dv && t.dv[2] <= 0), mark = t ? (lost ? ' ✖ lỗ khi đo trên giá ' + (local ? 'MT5' : 'Deriv') : t.ok ? ' ✔ đã kiểm chứng' : ' ✖ chưa đạt kiểm chứng') : '';
     const limit = (buy ? 'BUY' : 'SELL') + ' LIMIT';
     const action = s.state === 'pending' ? '<b>' + limit + ' ' + f(s.entry) + '</b> · lệnh chờ ' + side.toLowerCase() + ', không vào ở giá hiện tại' : s.state === 'inzone' ? '<b>' + side + ' quanh ' + f(s.entry) + '</b> · giá đang trong vùng, chờ phản ứng' : s.state === 'active' ? '<b>' + side + ' tại ' + f(s.entry) + '</b> · nến xác nhận vừa đóng' : '<b>Entry ' + f(s.entry) + '</b>';
-    const head = [(buy ? '🟢' : '🔴') + ' <b>' + (s.state === 'pending' ? limit : side) + ' ' + cfg.name + '</b> · điểm <b>' + s.score + '</b> (' + s.grade + ')', model + mark + (local ? ' · 🖥 giá MT5' : '')].concat(c.after ? ['✅ Đã MSS sau cú quét ' + f(c.after.p) + ' (' + hm(c.after.t) + '): đủ điều kiện đặt lệnh'] : [], '',
+    const head = [(buy ? '🟢' : '🔴') + ' <b>' + (s.state === 'pending' ? limit : side) + ' ' + cfg.name + '</b> · điểm <b>' + s.score + '</b> (' + s.grade + ')', model + mark + (local ? ' · 🖥 giá MT5' : '')].concat(c.after ? ['✅ Đã MSS sau cú quét ' + f(c.after.p) + ' (' + hm(c.after.t) + '): đủ điều kiện đặt lệnh'] : [], c.retest ? ['✅ Có nến từ chối sau retest ' + f(c.retest.level) + ' (nến ' + hm(c.retest.retestT) + ')'] : [], '',
       action, 'SL ' + f(s.sl) + ' (rủi ro $' + f(s.risk) + cfg.unit + ')', 'TP1 ' + f(s.tp1) + ' (1:' + s.rr1 + ') · TP2 ' + f(s.tp2) + ' (1:' + s.rr2 + ')');
     // máy MT5: mức nên nhập vào sàn, đã tính chênh mua / bán đang có
     if (c.order) head.push('⌨️ <b>Nhập MT5</b> (' + c.order.type + '): ' + f(c.order.entry) + ' · SL ' + f(c.order.sl) + ' · TP ' + f(c.order.tp1) + ' / ' + f(c.order.tp2) + ' · đã tính chênh ' + f(c.spread));
@@ -63,7 +63,21 @@ module.exports = function (A) {
     const t = ((A.CORE_TESTS || {})[cfg.id] || {}).ICT, losing = t && (c.feed === 'mt5' ? t.mt && t.mt.r[2] <= 0 : !(t.ok && !(t.dv && t.dv[2] <= 0)));
     const waitLine = (p) => '⏳ Mốc chờ mới: quét ' + (p.dir === 1 ? 'dưới ' : 'trên ') + level(p.level) + (p.mss != null ? ', rồi MSS ' + (p.dir === 1 ? 'trên ' : 'dưới ') + f(p.mss) : '') + ' · còn cách $' + f(Math.abs(e.price - p.level.p));
     const L = [];
-    if (e.type === 'plan') {
+    if (e.type === 'retest') {
+      const p = e.retest, K = A.RETEST && A.RETEST[cfg.id], pa = ((A.CORE_TESTS || {})[cfg.id] || {}).PA, paLost = pa && (c.feed === 'mt5' ? pa.mt && pa.mt.r[2] <= 0 : !(pa.ok && !(pa.dv && pa.dv[2] <= 0)));
+      L.push('🔁 <b>' + name + ': ĐANG RETEST ' + f(p.level) + '</b> → chuẩn bị ' + want + ' (Price Action)',
+        'Nến ' + hm(p.bosT) + ' đóng cửa ' + over + f(p.level) + ' (' + p.k + '), giá đi tới ' + f(p.peak) + '; nến ' + hm(p.retestT) + ' đã quay lại chạm mốc ✔', '',
+        '👉 <b>Bước tiếp</b>: chờ nến 15m từ chối (pin bar hoặc nhấn chìm) đóng cửa ' + over + '<b>' + f(p.level) + '</b>, chậm nhất lúc ' + hm(p.retestT + 3 * 900000) + '.',
+        'Có thì vào ở giá đóng nến đó, SL ' + (buy ? 'dưới đáy' : 'trên đỉnh') + ' retest (đang ' + f(p.ext) + '). Lệnh thật sẽ có tin riêng.');
+      if (e.block) L.push('⛔ Đang quanh giờ tin mạnh: chưa đặt lệnh.');
+      if (K && K[0]) L.push('📏 Chỉ ~' + K[0] + '% lần retest được báo như vậy ra lệnh.');
+      L.push('❌ Bỏ nếu tới hạn mà chưa có lệnh');
+      if (paLost) L.push('⚠️ Price Action đang lỗ trong kiểm chứng ' + cfg.id + ': chỉ để quan sát');
+    } else if (e.type === 'nopa') {
+      const why = { none: 'Không có nến từ chối trong 3 nến tính cả nến retest.', filtered: 'Nến ' + hm(e.rejT) + ' có từ chối nhưng không đủ điều kiện (khoảng SL, mục tiêu RR hoặc điểm).', flip: 'Thiên hướng 4H/1H đã đổi.', news: 'Đang quanh giờ tin mạnh: không đặt lệnh.' }[e.why];
+      if (!why) return null;
+      L.push('◻️ <b>' + name + ': retest ' + f(e.retest.level) + ' KHÔNG ra lệnh</b>', why + ' Bỏ chờ ' + want.toLowerCase() + '.');
+    } else if (e.type === 'plan') {
       L.push((e.dir === 1 ? '🟢' : '🔴') + ' <b>' + name + ': ' + (e.turned ? 'chuyển sang CHỜ ' + want : 'CHỜ ' + want) + '</b>');
       if (e.broke) L.push('⚠️ Giá đóng cửa ' + (e.broke.level.dir === 1 ? 'dưới ' : 'trên ') + level(e.broke.level) + ': phá mốc, không phải cú quét');
       L.push(waitLine(e));

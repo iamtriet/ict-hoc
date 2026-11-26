@@ -195,25 +195,33 @@
   }
 
   /* ---------- Mô hình PA: phá vỡ có displacement → retest → nến từ chối ---------- */
+  /* nến đầu tiên quay lại kiểm tra mức bị phá e.p (đã đi xa >= 1 ATR); null nếu chưa có hoặc giá đã phá ngược trước đó */
+  function paRetest(b, e, atr) {
+    const L = e.p; let P1 = -1e9, pk = e.i;
+    for (let j = e.i; j < b.length; j++) {
+      if (j > e.i + 1 && b[j].l <= L + 0.3 * atr && b[j].l >= L - 0.8 * atr && b[j].c >= L - 0.25 * atr && P1 - L >= 1.0 * atr && j - pk >= 2) return { j0: j, P1 };
+      if (b[j].l < L - 0.8 * atr) return null;
+      if (b[j].h > P1) { P1 = b[j].h; pk = j; }
+    }
+    return null;
+  }
+  /* nến từ chối đầu tiên trong 3 nến kể từ nến retest j0 */
+  function paReject(b, j0, L) {
+    for (let j = j0; j <= Math.min(b.length - 1, j0 + 2); j++) {
+      const x = b[j], body = Math.abs(x.c - x.o) || 1e-9, rg = x.h - x.l || 1e-9, lw = Math.min(x.o, x.c) - x.l;
+      const pin = lw >= 1.8 * body && lw >= 0.5 * rg && (x.c - x.l) / rg >= 0.6 && x.c > L;
+      const eng = j > 0 && b[j - 1].c < b[j - 1].o && x.c > b[j - 1].h && x.c > x.o && body >= 0.8 * Math.abs(b[j - 1].c - b[j - 1].o) && x.c > L;
+      if (pin || eng) return { q: j, kind: pin ? 'Pin bar' : 'Engulfing', wick: lw / body };
+    }
+    return null;
+  }
   function modelPA(V) {
     const out = [], { b15: b, D15: D } = V, n = b.length;
     const evs = D.ev.filter((e) => e.dir === 1 && e.i >= n - 60 && e.i <= n - 4);
     evs.forEach((e) => {
-      const L = e.p, atr = atrAt(b, e.i + 1); let P1 = -1e9, pk = e.i, j0 = -1;
-      for (let j = e.i; j < n; j++) {
-        if (j > e.i + 1 && b[j].l <= L + 0.3 * atr && b[j].l >= L - 0.8 * atr && b[j].c >= L - 0.25 * atr && P1 - L >= 1.0 * atr && j - pk >= 2) { j0 = j; break; }
-        if (b[j].l < L - 0.8 * atr) return;
-        if (b[j].h > P1) { P1 = b[j].h; pk = j; }
-      }
-      if (j0 < 0) return;
-      let q = -1, kind = '', wick = 0;
-      for (let j = j0; j <= Math.min(n - 1, j0 + 2); j++) {
-        const x = b[j], body = Math.abs(x.c - x.o) || 1e-9, rg = x.h - x.l || 1e-9, lw = Math.min(x.o, x.c) - x.l;
-        const pin = lw >= 1.8 * body && lw >= 0.5 * rg && (x.c - x.l) / rg >= 0.6 && x.c > L;
-        const eng = j > 0 && b[j - 1].c < b[j - 1].o && x.c > b[j - 1].h && x.c > x.o && body >= 0.8 * Math.abs(b[j - 1].c - b[j - 1].o) && x.c > L;
-        if (pin || eng) { q = j; kind = pin ? 'Pin bar' : 'Engulfing'; wick = lw / body; break; }
-      }
-      if (q < 0) return;
+      const L = e.p, atr = atrAt(b, e.i + 1), rt = paRetest(b, e, atr); if (!rt) return;
+      const { j0, P1 } = rt, rj = paReject(b, j0, L); if (!rj) return;
+      const { q, kind, wick } = rj;
       let low = 1e9; for (let j = j0; j <= q; j++) low = Math.min(low, b[j].l);
       const entry = b[q].c, buf = Math.max(0.12 * atr, CFG.buf), sl = low - buf, risk = entry - sl;
       if (risk < Math.max(0.4 * atr, CFG.minRisk) || risk > 2.5 * atr) return;
@@ -392,6 +400,23 @@
       synthetic: !!(pk && pk.synthetic), risk: round2(risk), align: res.bias.t4.dir === d && res.bias.t1.dir === d,
     };
   };
+
+  /* ---------- Price Action: các mức đã phá đang / vừa được kiểm tra lại ----------
+     Chỉ để báo trước: cùng điều kiện với modelPA, không tạo tín hiệu và không đổi quy tắc. Lệnh chỉ có khi nến từ chối đủ điều kiện.
+     left: còn bao nhiêu nến nữa được nhận nến từ chối; wait: chưa đủ nến sau cú phá để modelPA xét tới. */
+  A.retests = function (F, res) {
+    if (!res || !res.bias || !res.bias.dir || res.closed || !F.m15 || F.m15.length < 120) return [];
+    const d = res.bias.dir, m = F.m15, b = d === 1 ? m : mir(m), n = b.length, out = [];
+    det(b).D.ev.forEach((e) => {
+      if (e.dir !== 1 || e.i < n - 60) return;
+      const atr = atrAt(b, e.i + 1), rt = paRetest(b, e, atr); if (!rt) return;
+      const rj = paReject(b, rt.j0, e.p); let low = 1e18; for (let j = rt.j0; j <= Math.min(n - 1, rt.j0 + 2); j++) low = Math.min(low, b[j].l);
+      out.push({ dir: d, k: e.k, bosT: m[e.i].t, level: d * e.p, peak: d * rt.P1, retestT: m[rt.j0].t, ext: d * low, atr, age: n - 1 - rt.j0, left: Math.max(0, rt.j0 + 2 - (n - 1)), rej: rj ? { t: m[rj.q].t, kind: rj.kind } : null, wait: n - 1 - e.i < 3 });
+    });
+    return out;
+  };
+  /* Đo 180 ngày trên giá MT5 (đến 26/11/2026) bằng scripts/stages.js: [% lần "đang retest" được báo sau đó ra lệnh, % lệnh Price Action có tin báo trước] */
+  A.RETEST = { XAUUSD: [10, 50], BTCUSD: [16, 66] };
 
   /* ---------- Kiểm chứng trên dữ liệu gần đây (không nhìn tương lai) ---------- */
   A.backtest = function (F, opt, progress, done) {

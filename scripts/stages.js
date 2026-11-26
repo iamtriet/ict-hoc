@@ -1,7 +1,9 @@
-/* Theo dõi từng bước của một lệnh ICT để báo Telegram: chờ quét mốc → đã quét → MSS → lệnh limit → khớp / TP / SL / hủy.
+/* Theo dõi từng bước của một lệnh để báo Telegram. ICT: chờ quét mốc → đã quét → MSS → lệnh limit → khớp / TP / SL / hủy.
+   Price Action: đang retest mức vừa phá → có lệnh (tin lệnh) hoặc không ra lệnh.
    Chỉ quan sát kết quả của lõi phân tích, không đổi quy tắc vào lệnh. Mọi bước xét trên nến 15m ĐÃ ĐÓNG.
    const T = require('./stages.js')(A, SG);  T.step(mem, id, F, res, opt) và T.orders(mem, bars, live) trả về danh sách sự kiện;
-   mem là một đối tượng thường (lưu được thành JSON) cho riêng một mã. opt.swing = false: chỉ theo cú quét đúng mốc đang chờ.
+   T.retest(mem, F, res) cho bước Price Action. mem là một đối tượng thường (lưu được thành JSON) cho riêng một mã.
+   opt.swing = false: chỉ theo cú quét đúng mốc đang chờ.
    Tin hủy chỉ phát cho cú quét đã được báo. */
 'use strict';
 const M15 = 900000;
@@ -90,6 +92,36 @@ module.exports = function (A, SG) {
     return out;
   }
 
+  /* Price Action: báo khi giá đang kiểm tra lại mức vừa phá mà chưa có nến từ chối; sau đó nếu không ra lệnh thì báo bỏ.
+     Lệnh thật (nến từ chối đủ điều kiện) do phần gửi setup lo: mem.paAfter nối lệnh đó với lần retest đã báo.
+     Cửa sổ nhận nến từ chối là nến retest và 2 nến sau (cùng quy tắc với lõi phân tích). */
+  function retest(mem, F, res) {
+    const out = []; if (!res || !res.bias || res.closed || !F.m15.length) return out;
+    const m = F.m15, last = m[m.length - 1].t, block = !!(res.news && res.news.block);
+    const list = A.retests(F, res);
+    const same = (s, p) => s.model === 'PA' && s.d === p.dir && s.mss && m[s.mss.i] && m[s.mss.i].t === p.bosT;
+    const emit = (type, p, o) => out.push(Object.assign({ type, dir: p.dir, retest: p, price: res.price, block }, o));
+    mem.pa = (mem.pa || []).filter((p) => {
+      const made = res.setups.find((s) => same(s, p)); if (made) { mem.paAfter = { id: made.id, retest: p }; return false; }
+      const gone = (why, o) => { if (p.said) emit('nopa', p, Object.assign({ why }, o)); return false; };
+      if ((res.held || []).some((s) => same(s, p))) return gone('news');
+      const age = Math.round((last - p.retestT) / M15), c = list.find((x) => x.dir === p.dir && x.bosT === p.bosT);
+      if (age > 8) return false; // bot ngừng lâu: chuyện đã cũ, bỏ không báo
+      if (res.bias.dir !== p.dir) return age >= 2 ? gone('flip') : true;
+      if (c && c.rej && !c.wait) return gone('filtered', { rejT: c.rej.t });
+      return age >= 2 ? gone('none') : true;
+    });
+    list.forEach((c) => {
+      const key = c.dir + ':' + c.bosT; mem.paDone = (mem.paDone || []).slice(-60);
+      if (mem.paDone.indexOf(key) >= 0 || c.rej || !c.left || c.age > 1 || res.setups.some((s) => same(s, c))) return;
+      mem.paDone.push(key);
+      if (mem.pa.some((p) => p.dir === c.dir && Math.abs(p.level - c.level) <= 0.25 * c.atr)) return; // cùng một mức đang theo: một tin là đủ
+      const p = { dir: c.dir, k: c.k, bosT: c.bosT, level: c.level, peak: c.peak, retestT: c.retestT, ext: c.ext, said: true };
+      mem.pa.push(p); emit('retest', p);
+    });
+    return out;
+  }
+
   /* lệnh đã gửi: theo dõi đúng mức lúc gửi (cùng cách tính với ICT Live). bars gồm cả giá hiện tại để kịp báo hủy lệnh chờ */
   function track(mem, key, s, t) { mem.orders = mem.orders || {}; mem.orders[key] = { model: s.model, dir: s.dir, entry: s.entry, sl: s.sl, tp1: s.tp1, tp2: s.tp2, rr1: s.rr1, rr2: s.rr2, t, state: s.model === 'PA' ? 'active' : 'pending' }; }
   function orders(mem, bars, live) {
@@ -102,5 +134,5 @@ module.exports = function (A, SG) {
     });
     return out;
   }
-  return { step, track, orders, nextLevel, LIMIT, GRACE };
+  return { step, retest, track, orders, nextLevel, LIMIT, GRACE };
 };

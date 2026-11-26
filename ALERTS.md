@@ -6,7 +6,9 @@ vẽ giống trang Phân tích (điểm quét, MSS/BOS, FVG, Order Block, hộp 
 
 Ảnh được vẽ bằng Chrome ẩn trên máy chạy GitHub (`scripts/shot.js` mở `scripts/render.html`). Nếu không dựng được, bot gửi một ảnh 15m đơn giản như trước để không bỏ lỡ tín hiệu. Đặt biến `SHOT` = `off` nếu chỉ muốn ảnh đơn giản.
 
-## Tin từng bước của một lệnh ICT
+## Tin từng bước của lệnh
+
+### Lệnh ICT
 
 Ngoài album lệnh, bot báo từng thay đổi trên nến 15m **đã đóng** (không đổi quy tắc vào lệnh):
 
@@ -15,12 +17,22 @@ Ngoài album lệnh, bot báo từng thay đổi trên nến 15m **đã đóng**
 3. Cập nhật lệnh đã gửi: ✅ khớp · 🎯 TP1 (dời SL hòa vốn) · 🏁 TP2 · 🛑 SL · ⛔ / ⌛ **hủy lệnh chờ** (giá tới TP1 trước khi khớp, hoặc quá 9 giờ).
 4. Kế hoạch bị hủy: ❌ cú quét hỏng · ⌛ quá 4 giờ rưỡi chưa có MSS · ◻️ có MSS nhưng không đủ điều kiện · ⚠️ đóng cửa phá mốc · ↔️ đổi thiên hướng (giữ qua hai nến).
 
-Số tin: mỗi mã khoảng 8–12 tin một ngày (đo mô phỏng). Muốn bớt, đặt biến `STAGES`:
+### Lệnh Price Action
+
+- 🔁 **Đang retest**: giá đã phá một mức, đi xa ít nhất 1 ATR rồi quay lại chạm mức đó, và chưa có nến từ chối. Tin nêu mức cần giữ, hạn chót (nến retest và 2 nến sau) và phía đặt SL.
+- Có nến từ chối đủ điều kiện: nhận tin lệnh như trước, thêm dòng "✅ Có nến từ chối sau retest".
+- ◻️ **Không ra lệnh**: hết hạn mà không có nến từ chối, nến từ chối không đủ điều kiện, đổi thiên hướng, hoặc quanh tin mạnh.
+
+Đo 180 ngày trên giá MT5: vàng khoảng 0.6 tin retest mỗi ngày, 10% ra lệnh; BTC khoảng 1 tin mỗi ngày, 16% ra lệnh. Mỗi tin retest không ra lệnh kèm một tin ◻️. Chỉ khoảng một nửa lệnh vàng và hai phần ba lệnh BTC có tin retest đi trước: số còn lại có nến retest cũng chính là nến từ chối, nên tin lệnh tới thẳng. Price Action không có tin khớp / TP / SL khi đặt `MODE` = `pa`.
+
+### Chọn tin muốn nhận
+
+Số tin: mỗi mã khoảng 9–14 tin một ngày (đo mô phỏng). Muốn bớt, đặt biến `STAGES`:
 
 | Giá trị | Gửi gì |
 |---|---|
-| `sweep,swing,cancel,order` | mặc định |
-| `sweep,cancel,order` | chỉ theo cú quét đúng mốc đang chờ, bỏ đỉnh / đáy swing nhỏ (ít tin hơn nhiều, nhưng nhiều lệnh tới không báo trước) |
+| `sweep,swing,retest,cancel,order` | mặc định |
+| `sweep,retest,cancel,order` | chỉ theo cú quét đúng mốc đang chờ, bỏ đỉnh / đáy swing nhỏ (ít tin hơn nhiều, nhưng nhiều lệnh tới không báo trước) |
 | thêm `plan` | báo cả mỗi lần đổi mốc chờ (thêm khoảng 4–5 tin / ngày mỗi mã) |
 | `order` | chỉ lệnh và cập nhật lệnh |
 | `off` | tắt tin từng bước, chỉ còn album lệnh |
@@ -98,7 +110,7 @@ Công cụ (web và bot) không đưa lệnh quanh các tin USD mức High: lãi
 | `PRICE_OFFSET` | Chỉ dùng khi vàng lấy từ PAXG: `spot` (tự quy đổi theo giá vàng spot), `none`, hoặc một số cộng vào giá (ví dụ `2.5`) | spot |
 | `HB_HOUR` | Giờ UTC gửi tin báo sống hằng ngày (0 = 07:00 giờ Việt Nam) | 0 |
 | `STANDBY` | `off`: bot web luôn gửi, không nhường cho máy MT5 | nhường khi máy đang chạy |
-| `STAGES` | Tin từng bước của lệnh (xem mục trên): `sweep`, `swing`, `cancel`, `order`, `plan`, hoặc `off` | sweep,swing,cancel,order |
+| `STAGES` | Tin từng bước của lệnh (xem mục trên): `sweep`, `swing`, `retest`, `cancel`, `order`, `plan`, hoặc `off` | sweep,swing,retest,cancel,order |
 | `SESSIONS` | Các phiên được báo giờ bắt đầu, ngăn cách bằng dấu phẩy: `asia`, `london`, `ny`, `lc` (London Close), `pm` (NY PM). `off` để tắt | asia,london,ny |
 | `SITE_URL` | Liên kết đặt trong tin nhắn | trang phân tích của bạn |
 
